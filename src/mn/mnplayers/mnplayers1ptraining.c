@@ -3041,6 +3041,19 @@ void mnPlayers1PTrainingInitPlayer(s32 player)
 	sMNPlayers1PTrainingSlots[player].p_sfx = NULL;
 	sMNPlayers1PTrainingSlots[player].sfx_id = 0;
 	sMNPlayers1PTrainingSlots[player].player = NULL;
+#ifdef PORT
+	/* Issue #103/#128: training-mode twin of the mnPlayersVSInitPlayer
+	 * fix. Same eight uncleared GObj/heap pointers as the VS slot, same
+	 * stale-arena deref risk after taskman.c arena free. */
+	sMNPlayers1PTrainingSlots[player].cursor = NULL;
+	sMNPlayers1PTrainingSlots[player].puck = NULL;
+	sMNPlayers1PTrainingSlots[player].type_button = NULL;
+	sMNPlayers1PTrainingSlots[player].name_emblem_gobj = NULL;
+	sMNPlayers1PTrainingSlots[player].panel_doors = NULL;
+	sMNPlayers1PTrainingSlots[player].panel = NULL;
+	sMNPlayers1PTrainingSlots[player].type = NULL;
+	sMNPlayers1PTrainingSlots[player].figatree_heap = NULL;
+#endif
 
 	if (player == sMNPlayers1PTrainingManPlayer)
 	{

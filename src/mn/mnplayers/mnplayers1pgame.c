@@ -3439,6 +3439,20 @@ void mnPlayers1PGameInitPlayer(s32 player)
 	sMNPlayers1PGameSlot.p_sfx = NULL;
 	sMNPlayers1PGameSlot.sfx_id = 0;
 	sMNPlayers1PGameSlot.player = NULL;
+#ifdef PORT
+	/* Issue #103/#128: 1P-game twin of the mnPlayersVSInitPlayer fix in
+	 * mnplayersvs.c. Original decomp clears `flash` and `player` above, but
+	 * leaves the slot's six other GObj/heap pointers carrying the prior
+	 * scene's addresses. taskman.c free()s the prior arena per scene start,
+	 * so any stale pointer here dereferences freed memory. The 1P CSS is
+	 * hit before every classic-mode round, so the leak compounds. */
+	sMNPlayers1PGameSlot.cursor = NULL;
+	sMNPlayers1PGameSlot.puck = NULL;
+	sMNPlayers1PGameSlot.name_emblem_gobj = NULL;
+	sMNPlayers1PGameSlot.panel_doors = NULL;
+	sMNPlayers1PGameSlot.panel = NULL;
+	sMNPlayers1PGameSlot.figatree_heap = NULL;
+#endif
 	sMNPlayers1PGameSlot.fkind = gSCManagerSceneData.fkind;
 	sMNPlayers1PGameSlot.costume = gSCManagerSceneData.costume;
 

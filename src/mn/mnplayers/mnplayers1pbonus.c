@@ -2794,7 +2794,18 @@ void mnPlayers1PBonusInitPlayer(void)
 	sMNPlayers1PBonusSlot.is_selected = FALSE;
 	sMNPlayers1PBonusSlot.is_recalling = FALSE;
 #ifdef PORT
+	/* Issue #103/#128: bonus-CSS twin of the mnPlayersVSInitPlayer fix.
+	 * The original decomp leaves cursor/puck/name_emblem_gobj/panel/heap
+	 * carrying the prior scene's addresses. The bonus CSS runs between
+	 * each Race-to-the-Finish / Break-the-Targets / Board-the-Platforms
+	 * round, so this is hit repeatedly during a campaign. */
 	sMNPlayers1PBonusSlot.player = NULL;
+	sMNPlayers1PBonusSlot.cursor = NULL;
+	sMNPlayers1PBonusSlot.puck = NULL;
+	sMNPlayers1PBonusSlot.name_emblem_gobj = NULL;
+	sMNPlayers1PBonusSlot.panel_doors = NULL;
+	sMNPlayers1PBonusSlot.panel = NULL;
+	sMNPlayers1PBonusSlot.figatree_heap = NULL;
 #endif
 	sMNPlayers1PBonusSlot.fkind = nFTKindNull;
 }

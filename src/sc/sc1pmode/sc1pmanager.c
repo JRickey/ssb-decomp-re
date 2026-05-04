@@ -323,6 +323,20 @@ void sc1PManagerUpdateScene(void)
     {
         while (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd)
         {
+#ifdef PORT
+            /* Issue #103/#128: sc1pmanager dispatches scenes (sc1PIntro,
+             * sc1PGame, sc1PStageClear, mn1pcontinue, ...) directly via
+             * StartScene calls inside this loop, never returning to
+             * scManagerRunLoop. That bypasses the cross-scene fighter_gobj
+             * scrub at scmanager.c:943-958, so a stale gobj from the prior
+             * round survives into the next round's spawn logic. Repeat the
+             * same scrub here, once per round-iteration. */
+            for (s32 _p = 0; _p < GMCOMMON_PLAYERS_MAX; _p++) {
+                gSCManager1PGameBattleState.players[_p].fighter_gobj = NULL;
+                gSCManagerVSBattleState.players[_p].fighter_gobj = NULL;
+                gSCManagerTransferBattleState.players[_p].fighter_gobj = NULL;
+            }
+#endif
             this_mask = (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & ~(1 << gSCManagerSceneData.fkind);
 
             is_player_lose = FALSE;
@@ -509,6 +523,18 @@ void sc1PManagerUpdateScene(void)
         sc1PManagerTrySetChallengers();
     }
 skip_main_stages:
+#ifdef PORT
+    /* Issue #103/#128: same per-iteration scrub as in the main-stages while
+     * loop above. The challenger flow (Luigi → Ness → Purin → Captain Falcon)
+     * dispatches sc1PChallenger and sc1PGame directly without returning to
+     * scManagerRunLoop, so without this each challenger battle inherits the
+     * prior battle's stale fighter_gobj pointers. */
+    for (s32 _p = 0; _p < GMCOMMON_PLAYERS_MAX; _p++) {
+        gSCManager1PGameBattleState.players[_p].fighter_gobj = NULL;
+        gSCManagerVSBattleState.players[_p].fighter_gobj = NULL;
+        gSCManagerTransferBattleState.players[_p].fighter_gobj = NULL;
+    }
+#endif
     if (gSCManagerSceneData.spgame_stage >= nSC1PGameStageChallengerStart)
     {
         gSCManagerSceneData.challenger_fkind = dSC1PManagerChallangerFighterKinds[gSCManagerSceneData.spgame_stage - nSC1PGameStageChallengerStart];

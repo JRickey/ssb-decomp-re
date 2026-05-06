@@ -363,6 +363,18 @@ s32 mnPlayersVSGetPortrait(s32 fkind)
 		7, 5, 8, 10, 11, 6
 	};
 
+#ifdef PORT
+	/* fkind comes from sMNPlayersVSSlots[player].fkind which can be a non-playable
+	   kind (nFTKindNull=28, nFTKindBoss=12, polygon variants, etc.) when the slot
+	   is unselected or transitioning. ASan caught a stack-OOB read here when an
+	   out-of-range fkind landed past the 12-entry portraits[]. Clamp to slot 0
+	   (Mario portrait); on N64 the OOB bytes happened to be benign stack residue
+	   so this stayed silent. Tracked separately at call sites where appropriate. */
+	if ((u32)fkind >= ARRAY_COUNT(portraits))
+	{
+		return 0;
+	}
+#endif
 	return portraits[fkind];
 }
 
@@ -2949,6 +2961,9 @@ s32 mnPlayersVSUpdateCursorPlacementPriorities(s32 player, s32 puck)
 			}
 			gcMoveGObjDL(sMNPlayersVSSlots[sMNPlayersVSSlots[i].held_player].puck, 32, unheld_priorities[unheld_id] + 1);
 			unheld_id--;
+#ifdef PORT
+			if (unheld_id < 0) unheld_id = 0;
+#endif
 		}
 	}
 	if (player != GMCOMMON_PLAYERS_MAX)
@@ -2958,6 +2973,9 @@ s32 mnPlayersVSUpdateCursorPlacementPriorities(s32 player, s32 puck)
 	gcMoveGObjDL(sMNPlayersVSSlots[puck].puck, 33, unheld_priorities[unheld_id] + 1);
 
 	unheld_id--;
+#ifdef PORT
+	if (unheld_id < 0) unheld_id = 0;
+#endif
 
 	for (i = 0; i < (ARRAY_COUNT(is_held) + ARRAY_COUNT(unheld_priorities)) / 2; i++)
 	{
@@ -2968,6 +2986,9 @@ s32 mnPlayersVSUpdateCursorPlacementPriorities(s32 player, s32 puck)
 				gcMoveGObjDL(sMNPlayersVSSlots[i].cursor, 32, unheld_priorities[unheld_id]);
 			}
 			unheld_id--;
+#ifdef PORT
+			if (unheld_id < 0) unheld_id = 0;
+#endif
 		}
 	}
 	return 0;
@@ -4309,7 +4330,11 @@ void mnPlayersVSUpdateControllerOrders(void)
 	{
 		sMNPlayersVSControllerOrders[player] = -1;
 
-		for (order = 0; gSYControllerDeviceStatuses[order] != -1; order++) // Array can go out of bounds!!! AND DOES!!!
+		for (order = 0;
+#ifdef PORT
+		     order < (s32)ARRAY_COUNT(gSYControllerDeviceStatuses) &&
+#endif
+		     gSYControllerDeviceStatuses[order] != -1; order++) // Array can go out of bounds when 4 controllers are connected (no -1 terminator written); guarded under PORT.
 		{
 			if (player == gSYControllerDeviceStatuses[order])
 			{

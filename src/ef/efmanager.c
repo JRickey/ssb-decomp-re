@@ -2142,7 +2142,15 @@ LBParticle* efManagerDamageNormalLightMakeEffect(Vec3f *pos, s32 player, s32 siz
     }
     effect_gobj->user_data.p = ep;
 
-    pc = lbParticleMakeScriptID(gEFManagerParticleBankID, dEFManagerDamageNormalLightIDs[player]);
+    pc = lbParticleMakeScriptID(gEFManagerParticleBankID, dEFManagerDamageNormalLightIDs[
+#ifdef PORT
+        /* sibling per-player tables (Heavy/ImpactWave) have 5 entries to handle attacker_player == 4
+           (boss / no-attacker / 5th-slot); this IDs table was authored 4-wide. clamp instead of OOB. */
+        (u32)player < ARRAY_COUNT(dEFManagerDamageNormalLightIDs) ? player : 0
+#else
+        player
+#endif
+    ]);
 
     if (pc != NULL)
     {

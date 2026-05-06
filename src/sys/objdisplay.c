@@ -13,6 +13,24 @@
 #ifdef _MSC_VER
 #include <excpt.h>
 #endif
+/* Issue #128 follow-on: stale GObj on tagged-DL list (post-Lead-1/3 fix).
+ * When the previous scene leaks a GObj registration, gcCaptureTaggedGObjs
+ * walks into freed memory. Without this guard ASan halts on the first
+ * deref but doesn't name the offending GObj. With it we describe the
+ * poisoned address (alloc/free trace) and skip safely so additional
+ * stale entries in the same list also report instead of hiding behind
+ * the first abort. Same gate used in libultraship/src/fast/interpreter.cpp
+ * (PORT_DIAG_HAVE_ASAN). */
+#if defined(__SANITIZE_ADDRESS__)
+#define PORT_DIAG_HAVE_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define PORT_DIAG_HAVE_ASAN 1
+#  endif
+#endif
+#ifdef PORT_DIAG_HAVE_ASAN
+#include <sanitizer/asan_interface.h>
+#endif
 #endif
 
 /* These should no longer be required as they're included in obj.h
@@ -3596,9 +3614,36 @@ void gcRunFuncCamera(CObj *cobj, s32 dl_id)
 void gcCaptureTaggedGObjs(GObj *camera_gobj, s32 link_id, sb32 is_tag_mask_or_id)
 {
     GObj *current_gobj = gGCCommonDLLinks[link_id];
+#ifdef PORT_DIAG_HAVE_ASAN
+    /* Throttle diagnostic output: 8 reports per scene-load is enough to
+     * identify the leaker, more is just log spam. */
+    static int s_reports_this_load = 0;
+    static u32 s_last_frame_seen   = (u32)-1;
+    if (dSYTaskmanFrameCount != s_last_frame_seen) {
+        s_reports_this_load = 0;
+        s_last_frame_seen   = dSYTaskmanFrameCount;
+    }
+#endif
 
     while (current_gobj != NULL)
     {
+#ifdef PORT_DIAG_HAVE_ASAN
+        /* If the GObj is in poisoned (freed/redzone) memory, log identifying
+         * info BEFORE letting the natural flag-read below trip ASan. ASan
+         * then halts with alloc/free traces; the diag output above the
+         * report names link_id + the camera context that found the bad
+         * entry. We do NOT skip the deref — ASan halting on it is the
+         * whole point. */
+        if (__asan_region_is_poisoned((void *)current_gobj, sizeof(GObj)) != NULL
+            && s_reports_this_load < 8) {
+            s_reports_this_load++;
+            port_log("SSB64: gcCaptureTaggedGObjs: POISONED GObj %p in dl_link[%d] "
+                     "(camera_gobj=%p tag_mode=%d frame=%u). ASan should halt next.\n",
+                     (void *)current_gobj, link_id, (void *)camera_gobj,
+                     (int)is_tag_mask_or_id, (unsigned)dSYTaskmanFrameCount);
+            __asan_describe_address((void *)current_gobj);
+        }
+#endif
         if (!(current_gobj->flags & GOBJ_FLAG_HIDDEN))
         {
             if

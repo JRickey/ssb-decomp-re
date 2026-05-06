@@ -1113,6 +1113,24 @@ GObj* gmCameraMakeDefaultCamera(u8 tk1, u8 tk2, void (*proc)(GObj*))
     Vec3f sp4C;
     f32 temp_f0;
 
+#ifdef PORT
+    /* Issue #128 follow-on: gGMCameraGObj and gGMCameraStruct.{pzoom,pfollow}
+     * _fighter_gobj are BSS-resident GObj* fields. gGMCameraGObj is written
+     * unconditionally at the bottom of this function, but the {pzoom,pfollow}
+     * fighter fields are only written by gmCameraSetZoomFighter/gmCameraSet
+     * FollowFighter (lines 899/912) — paths that don't fire in bonus stages,
+     * the menu, or any non-multi-player scene. They are read during gameplay
+     * (lines 711-712, 748, 847-848) via DObjGetStruct/ftGetStruct, which
+     * deref the GObj. On N64, BSS re-DMA cleared these between scenes; on
+     * the port the BSS persists, so a previous match's fighter_gobj survives
+     * even after taskman.c:1352 frees its arena. NULL all three on every
+     * camera setup so any stale read after this point is a clean NULL deref
+     * instead of an arena-freed deref. */
+    gGMCameraGObj = NULL;
+    gGMCameraStruct.pzoom_fighter_gobj = NULL;
+    gGMCameraStruct.pfollow_fighter_gobj = NULL;
+#endif
+
     camera_gobj = gcMakeCameraGObj
     (
         nGCCommonKindMainCamera,

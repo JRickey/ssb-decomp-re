@@ -664,7 +664,26 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
         else fp->passive_vars.kirby.is_ignore_losecopy = TRUE;
 
         {
+#ifdef PORT
+            /* PORT: when an N-Kirby fighter spawns on a stage with no real Kirby,
+               the data loader populates gFTDataNKirbySubMotion (pointing at the
+               freshly-loaded copy of the file) but does NOT touch
+               gFTDataKirbyMainMotion. If real Kirby was loaded into a previous
+               scene's arena that has since been freed, gFTDataKirbyMainMotion
+               still holds the stale pointer -- ASan caught a heap-use-after-free
+               in the fixup loop here (1.2 MB inside a freed 16 MB region).
+               Both globals point at the same physical file when both load, so
+               for N-Kirby spawns we read through the always-fresh sub-motion
+               global instead. */
+            FTKirbyCopy *copy;
+            if (fp->fkind == nFTKindNKirby) {
+                copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataNKirbySubMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+            } else {
+                copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+            }
+#else
             FTKirbyCopy *copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+#endif
 #ifdef PORT
             /* PORT: FTKirbyCopy's first u32 word is [u16 copy_id][s16 copy_modelpart_id]
              * — adjacent u16s in one word.  Pass1's blanket BSWAP32 position-swaps

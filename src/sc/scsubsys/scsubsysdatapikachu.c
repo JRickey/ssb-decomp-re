@@ -40,7 +40,10 @@ s32 D_ovl1_8039229C[] =
 	ftMotionPlayFGM(nSYAudioVoicePikachuFuraSleep),
 	0xAC000006,
 	0x00000000,
-	0x00000000
+	0x00000000,
+#ifdef PORT
+	ftMotionCommandEnd() /* port: ASan-detected missing terminator; on N64 fell into adjacent globals */
+#endif
 };
 
 s32 D_ovl1_803922AC[] =

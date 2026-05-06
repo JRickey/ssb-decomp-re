@@ -368,6 +368,23 @@ void sc1PBonusStageInitVars(void)
 	s32 player;
 	s32 fkind;
 
+#ifdef PORT
+	/* Issue #128 follow-on: gGRCommonStruct.bonus1/2.interface_gobj are
+	 * BSS-resident GObj* fields written from a fresh GObj at the bottom of
+	 * sc1PBonusStageMakeTargets / sc1PBonusStageMakePlatforms (lines 864 /
+	 * 887) and read by sc1PBonusStageUpdateTargetInterface / ...Platform
+	 * (lines 502 / 639) via SObjGetStruct(). On N64, BSS re-DMA of overlay
+	 * 29 implicitly zeroed these between bonus-stage entries; on the port
+	 * the overlay is statically linked, so a previous bonus stage's GObj*
+	 * survives. taskman.c:1352 frees the prior 16 MiB arena under the old
+	 * GObj, leaving these fields as freed-heap pointers. The Make* writers
+	 * happen later in scene init — any read between entry to InitVars and
+	 * the Make* call dereferences freed memory. NULL them on every entry
+	 * so the Make* path is the only writer, matching N64 behavior. */
+	gGRCommonStruct.bonus1.interface_gobj = NULL;
+	gGRCommonStruct.bonus2.interface_gobj = NULL;
+#endif
+
 	gSCManagerSceneData.is_reset = FALSE;
 
 	sSC1PBonusStageBattleState = dSCManagerDefaultBattleState;

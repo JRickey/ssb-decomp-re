@@ -641,6 +641,10 @@ u32 dGMColScriptsFighterFoxSpecialLw[/* */] =
 	gmColCommandGoto(dGMColScriptsFighterFoxSpecialLw)
 };
 
+#ifdef PORT
+extern u32 dGMColScriptsFighterFoxSpecialHiHold[];
+#endif
+
 // 0x8012D3D8
 u32 dGMColScriptsFighterFoxSpecialHiStart[/* */] =
 {
@@ -660,7 +664,12 @@ u32 dGMColScriptsFighterFoxSpecialHiStart[/* */] =
 	gmColCommandWait(1),
 	gmColCommandClearColorAll(),
 	gmColCommandWait(1),
-	gmColCommandLoopEnd()
+	gmColCommandLoopEnd(),
+#ifdef PORT
+	/* port: explicit fall-through that was implicit on N64 (adjacent BSS layout). With
+	   source-compiled globals + ASan redzones the cursor walks off the end. */
+	gmColCommandGoto(dGMColScriptsFighterFoxSpecialHiHold)
+#endif
 };
 
 // 0x8012D42C - part of FoxSpecialHiStart, as that script does not have an End command
@@ -818,10 +827,18 @@ u32 dGMColScriptsFighterPikachuAttackS4[/* */] =
 	gmColCommandGoto(dGMColScriptsFighterPikachuAttackS4)
 };
 
+#ifdef PORT
+extern u32 dGMColScriptsFighterPikachuSpecialHiStartLoop[];
+#endif
+
 // 0x8012D6AC
 u32 dGMColScriptsFighterPikachuSpecialHiStart[/* */] =
 {
-	gmColCommandPlayFGM(nSYAudioFGMPikachuSpecialHiStart)
+	gmColCommandPlayFGM(nSYAudioFGMPikachuSpecialHiStart),
+#ifdef PORT
+	/* port: explicit fall-through that was implicit on N64 (adjacent BSS layout). */
+	gmColCommandGoto(dGMColScriptsFighterPikachuSpecialHiStartLoop)
+#endif
 };
 
 // 0x8012D6B0 - part of PikachuSpecialHiStart, as that script does not have an End command

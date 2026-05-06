@@ -114,7 +114,10 @@ s32 D_ovl1_803919A4[] =
 	ftMotionCommandWaitAsync(135),
 	0xAC000002,
 	ftMotionCommandWait(4),
-	0xAC000000
+	0xAC000000,
+#ifdef PORT
+	ftMotionCommandEnd() /* port: ASan-detected missing terminator; on N64 fell into adjacent D_ovl1_803919EC */
+#endif
 };
 
 s32 D_ovl1_803919EC[] =

@@ -193,7 +193,24 @@ void ftBossWaitDecideStatusComputer(GObj *fighter_gobj) // Decide Master Hand's 
         {
             random = syUtilsRandIntRange(3);
 
+#ifdef PORT
+            /* status_id should sit in [0, 3] (each lookup row is 3 entries; the
+               array is 4 rows, written at line 217 from values 0..3). ASan
+               caught a 1-byte global-buffer-overflow at index -2: status_id was
+               -1 at the moment of read. Origin not yet pinned -- could be a
+               sign-extension from a u8 field, an interrupt mid-state-transition,
+               or a fresh boss state not initialized via the normal path. Clamp
+               to row 0 when out of range to avoid the OOB; downstream logic
+               handles all 0..3 var values. */
+            s32 _status_id = fp->passive_vars.boss.p->status_id;
+            if ((u32)_status_id >= 4)
+            {
+                _status_id = 0;
+            }
+            var = dFTBossWaitRandomArrayLookup[_status_id * 3 + random];
+#else
             var = dFTBossWaitRandomArrayLookup[fp->passive_vars.boss.p->status_id * 3 + random];
+#endif
 
             if (var == 2)
             {

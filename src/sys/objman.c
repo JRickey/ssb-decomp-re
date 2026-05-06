@@ -9,6 +9,24 @@
 
 extern void port_log(const char *fmt, ...);
 
+/* Issue #128 follow-on (item-side variant): a stale GObj* from BSS-stored
+ * handles is being injected into gGCCommonDLLinks[] *after* gcSetupObjman
+ * cleared the array. Catching the injection (here) names the caller — the
+ * deferred discovery in gcCaptureTaggedGObjs only sees the consequence.
+ * Same gate as libultraship/src/fast/interpreter.cpp:50-56. */
+#ifdef PORT
+#if defined(__SANITIZE_ADDRESS__)
+#define PORT_DIAG_HAVE_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define PORT_DIAG_HAVE_ASAN 1
+#  endif
+#endif
+#ifdef PORT_DIAG_HAVE_ASAN
+#include <sanitizer/asan_interface.h>
+#endif
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //   GLOBAL / STATIC VARIABLES   //
@@ -508,6 +526,21 @@ void gcRemoveGObjFromLinkedList(GObj *this_gobj)
 // 0x80007B98
 void gcAppendGObjToDLLinkedList(GObj *this_gobj, GObj *dl_link_gobj)
 {
+#ifdef PORT_DIAG_HAVE_ASAN
+	/* Catch the stale-GObj injection at write-time, not at first-draw read.
+	 * If this_gobj points into freed/poisoned heap, the next deref below
+	 * (this_gobj->dl_link_prev = ...) will trip ASan with a use-after-free
+	 * report whose stack trace names the caller — the BSS holder of the
+	 * stale pointer. The describe_address dump above the report names the
+	 * original allocation + free sites. */
+	if (__asan_region_is_poisoned((void *)this_gobj, sizeof(GObj)) != NULL) {
+		port_log("SSB64: gcAppendGObjToDLLinkedList: POISONED this_gobj=%p "
+		         "(caller injected stale GObj* from freed prior-scene heap). "
+		         "ASan should halt on the next deref.\n",
+		         (void *)this_gobj);
+		__asan_describe_address((void *)this_gobj);
+	}
+#endif
 	this_gobj->dl_link_prev = dl_link_gobj;
 
 	if (dl_link_gobj != NULL)

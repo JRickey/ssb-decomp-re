@@ -994,6 +994,19 @@ void mnPlayers1PGameContinueInitVars(void)
     sMN1PContinueStatus = 0;
     sMN1PContinueUnknown0x80134354 = 0;
     sMN1PContinueOptionNoGameOverAutoWait = -1;
+
+#ifdef PORT
+    /* Overlay BSS persists across re-entries on the static-link port; on N64
+     * these were re-zeroed by the overlay DMA. Without resetting
+     * sMN1PContinueOptionYesRetryTic, the unconditional tic==retryTic check in
+     * FuncRun fires when tics catch up to the prior session's value, exits to
+     * title with sMN1PContinueIsSelectContinue=TRUE, and sc1pmanager treats
+     * that as "Yes" — replaying the stage even when the player picked No. */
+    sMN1PContinueOptionYesRetryTic = 0;
+    sMN1PContinueOptionNoGameOverInputWait = 0;
+    sMN1PContinueOptionChangeWait = 0;
+    sMN1PContinueIsSelectContinue = FALSE;
+#endif
 }
 
 // 0x80133990 - real

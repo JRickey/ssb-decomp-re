@@ -146,6 +146,7 @@ void scVSBattleStartBattle(void)
 
 	scVSBattleSetupFiles();
 
+#ifndef PORT
 	if (!(gSCManagerBackupData.error_flags & LBBACKUP_ERROR_1PGAMEMARIO) && (gSCManagerBackupData.boot > 68))
 	{
 		file = lbRelocGetExternHeapFile((u32)llSYKseg1ValidateFileID, syTaskmanMalloc(lbRelocGetFileSize((u32)llSYKseg1ValidateFileID), 0x10));
@@ -159,6 +160,7 @@ void scVSBattleStartBattle(void)
 			gSCManagerBackupData.error_flags |= LBBACKUP_ERROR_1PGAMEMARIO;
 		}
 	}
+#endif
 	gcMakeDefaultCameraGObj(nGCCommonLinkIDCamera, GOBJ_PRIORITY_DEFAULT, 100, COBJ_FLAG_ZBUFFER, GPACK_RGBA8888(0x00, 0x00, 0x00, 0xFF));
 	efParticleInitAll();
 	ftParamInitGame();

@@ -194,18 +194,27 @@ void syControllerUpdateGlobalData(void)
                 &gSYControllerDevices[i].stick_range.x,
                 &gSYControllerDevices[i].stick_range.y);
 
-            // Apply input remap enhancements only during gameplay. The
-            // BattleState->players[] array is only valid in VS / 1P scenes;
-            // it's NULL in menus / CSS / opening / staffroll, and we must
-            // not deref it. Bound `i` against GMCOMMON_PLAYERS_MAX explicitly
-            // because the loop limit is `(ARRAY_COUNT(descs)+ARRAY_COUNT(devs))/2`
-            // — equal to GMCOMMON_PLAYERS_MAX today but the math is fragile
-            // and `players[]` overruns would clobber the next BattleState
-            // field on LP64 with the same fingerprint as past per-player-
-            // array bugs (see docs/bugs/per_gkind_table_inishie_short).
-            if (i < GMCOMMON_PLAYERS_MAX
-                && gSCManagerBattleState != NULL
-                && gSCManagerBattleState->players[i].fighter_gobj != NULL) {
+            // Apply input remap enhancements only during gameplay. Gate on
+            // gSCManagerSceneData.scene_curr (the source of truth) rather than
+            // on BattleState->players[i].fighter_gobj — the BattleState
+            // pointer is owned by whichever gameplay scene last assigned it
+            // and is never NULLed at scene exit, so its fighter_gobj fields
+            // can hold stale non-NULL values after returning to CSS from
+            // 1P/Bonus modes (issue #97 [3]). Without the scene-curr gate,
+            // C-Stick Smash fires in CSS, hijacking palette cycling.
+            //
+            // Bound `i` against GMCOMMON_PLAYERS_MAX explicitly because the
+            // loop limit is `(ARRAY_COUNT(descs)+ARRAY_COUNT(devs))/2` —
+            // equal to GMCOMMON_PLAYERS_MAX today but the math is fragile
+            // and overruns would clobber the next field on LP64 with the
+            // same fingerprint as past per-player-array bugs (see
+            // docs/bugs/per_gkind_table_inishie_short).
+            u8 scene = gSCManagerSceneData.scene_curr;
+            sb32 in_gameplay = (scene == nSCKindVSBattle
+                                || scene == nSCKind1PGame
+                                || scene == nSCKind1PBonusStage
+                                || scene == nSCKind1PTrainingMode);
+            if (i < GMCOMMON_PLAYERS_MAX && in_gameplay) {
                 port_enhancement_c_stick_smash(i,
                     &gSYControllerDevices[i].button_hold,
                     &gSYControllerDevices[i].button_tap,

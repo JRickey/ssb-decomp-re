@@ -752,7 +752,24 @@ alSoundEffect* lbCommonMakePositionFGM(u16 fgm, f32 pos)
         {
             balance = -60;
         }
+#ifdef PORT
+        /* Original N64 wrote `64 - balance`, which inverts the
+         * mapping: a fighter at +X (screen-right per gmcamera.c's
+         * pos_left/pos_right convention) yields balance≈4 → pan
+         * biased toward AL_PAN_LEFT(0).  The pan byte flows
+         * unchanged into the canonical SGI `n_eqpower` table
+         * (n_eqpower[0] full-left, n_eqpower[127] full-right) —
+         * there's no microcode trick that re-inverts it.  Upstream
+         * decomp git history shows the formula has never changed
+         * since initial commit, so this has been an N64 game bug
+         * since 1999.  Per CLAUDE.md #5 (accuracy to game behavior
+         * > ROM-byte matching when the ROM bytes encode an outright
+         * bug), we deviate from ROM-matching here. */
+        balance = 64 + balance;
+#else
         balance = 64 - balance;
+#endif
+
 
 #ifdef PORT
         /* PORT: func_80026A10_27610 returns ALWhatever8009EDD0_siz34*,

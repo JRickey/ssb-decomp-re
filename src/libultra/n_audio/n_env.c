@@ -11,6 +11,13 @@
 #include <assert.h>
 #endif
 
+#include <n_audio/n_libaudio.h>
+extern float port_get_sfx_volume(void);
+extern float port_get_voice_volume(void);
+
+// Our global variable to track the current FGM volume type
+float g_port_current_fgm_multiplier = 1.0f;
+
 #define KILL_TIME	50000	/* 50 ms */
 
 typedef struct ALWhatever80026094_sub
@@ -4636,7 +4643,12 @@ void func_80027460_28060(ALWhatever8009EE0C_2 *arg0)
         }
         if ((arg0->unk32 != arg0->unk33) || (arg0->unk38 != arg0->unk39))
         {
-            n_alSynSetVol(&arg0->voice, ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7), D_8009EDD0_406D0.unk_alsound_0x44);
+            // LUS: Squash the vanilla volume using our global multiplier
+            s16 fgm_vanilla_vol = ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7);
+            s16 fgm_scaled_vol = (s16)(fgm_vanilla_vol * g_port_current_fgm_multiplier);
+
+            n_alSynSetVol(&arg0->voice, fgm_scaled_vol, D_8009EDD0_406D0.unk_alsound_0x44);
+            //n_alSynSetVol(&arg0->voice, ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7), D_8009EDD0_406D0.unk_alsound_0x44);
         }
         if ((arg0->unk34 != arg0->unk35) || (arg0->unk3A != arg0->unk3B))
         {
@@ -4704,9 +4716,11 @@ void func_80027460_28060(ALWhatever8009EE0C_2 *arg0)
             /* PORT: unk40 is a real ALWaveTable* (widened in the
              * unified PORT struct); skip the (intptr_t) sign-extension
              * cast that N64's s32-stored 32-bit pointer required. */
-            n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
+            //n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
+            n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * g_port_current_fgm_multiplier), param, param3, 0);
 #else
-            n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
+            //n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
+            n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * g_port_current_fgm_multiplier), param, param3, 0);
 #endif
             arg0->unk2A = 1;
         }
@@ -5301,6 +5315,13 @@ ALWhatever8009EDD0_siz34* func_80026A10_27610(u16 id)
 
 ALWhatever8009EDD0_siz34* func_800269C0_275C0(u16 id)
 {
+    // LUS: Determine FGM vs Voice (IDs 0x135 and up are Voices)
+    if (id >= 0x135) {
+      g_port_current_fgm_multiplier = port_get_voice_volume();
+    } else {
+      g_port_current_fgm_multiplier = port_get_sfx_volume();
+    }
+
 	if (id >= D_8009EDD0_406D0.fgm_ucode_count)
 	{
 		return NULL;

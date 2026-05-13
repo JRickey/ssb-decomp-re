@@ -12,11 +12,12 @@
 #endif
 
 #include <n_audio/n_libaudio.h>
+// LUS: Audio Slider Hooks
 extern float port_get_sfx_volume(void);
 extern float port_get_voice_volume(void);
+extern float port_get_master_volume(void);
 
-// Our global variable to track the current FGM volume type
-float g_port_current_fgm_multiplier = 1.0f;
+u8 g_port_current_is_voice = 0; // Thread handoff flag
 
 #define KILL_TIME	50000	/* 50 ms */
 
@@ -178,6 +179,7 @@ typedef struct ALWhatever8009EE0C
     u8 unk3B;
     u8 unk3C;
     u8 unk3D;
+    u8 port_is_voice; // LUS: Flags this specific synth node
     /* PORT: unk40 holds an ALWaveTable* (assigned from ALSound.wavetable
      * by ucode opcode 0x60).  N64 stored it as s32 (a 32-bit pointer);
      * widen to native pointer so the read at func_80027460_28060's voice
@@ -215,6 +217,7 @@ typedef struct ALWhatever8009EE0C
     u8 unk3A;
     u8 unk3B;
     u8 unk3C;
+    u8 port_is_voice; // LUS: Flags this specific synth node
     s32 unk40;
     ALWhatever8009EDD0_siz24 *unk44;
 	u16 unk48;
@@ -288,7 +291,7 @@ typedef struct ALWhatever8009EDD0_siz34
     u8 unkALWhatever8009EDD0_siz34_0x2E;
     u8 unkALWhatever8009EDD0_siz34_0x2F;
     u8 unkALWhatever8009EDD0_siz34_0x30;
-
+    u8 port_is_voice; // LUS: Propagates voice identity to the audio thread
 } ALWhatever8009EDD0_siz34;
 
 #ifdef PORT
@@ -4643,12 +4646,13 @@ void func_80027460_28060(ALWhatever8009EE0C_2 *arg0)
         }
         if ((arg0->unk32 != arg0->unk33) || (arg0->unk38 != arg0->unk39))
         {
-            // LUS: Squash the vanilla volume using our global multiplier
-            s16 fgm_vanilla_vol = ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7);
-            s16 fgm_scaled_vol = (s16)(fgm_vanilla_vol * g_port_current_fgm_multiplier);
+          // LUS: Fetch the multiplier based on this specific node's identity!
+          float type_mult = arg0->port_is_voice ? port_get_voice_volume() : port_get_sfx_volume();
 
-            n_alSynSetVol(&arg0->voice, fgm_scaled_vol, D_8009EDD0_406D0.unk_alsound_0x44);
-            //n_alSynSetVol(&arg0->voice, ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7), D_8009EDD0_406D0.unk_alsound_0x44);
+          s16 fgm_vanilla_vol = ((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7);
+          s16 fgm_scaled_vol = (s16)(fgm_vanilla_vol * type_mult * port_get_master_volume());
+
+          n_alSynSetVol(&arg0->voice, fgm_scaled_vol, D_8009EDD0_406D0.unk_alsound_0x44);
         }
         if ((arg0->unk34 != arg0->unk35) || (arg0->unk3A != arg0->unk3B))
         {
@@ -4712,15 +4716,16 @@ void func_80027460_28060(ALWhatever8009EE0C_2 *arg0)
             {
                 param3 = 0x7F;
             }
+
+            // LUS: Fetch the multiplier!
+            float type_mult = arg0->port_is_voice ? port_get_voice_volume() : port_get_sfx_volume();
 #ifdef PORT
             /* PORT: unk40 is a real ALWaveTable* (widened in the
              * unified PORT struct); skip the (intptr_t) sign-extension
              * cast that N64's s32-stored 32-bit pointer required. */
-            //n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
-            n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * g_port_current_fgm_multiplier), param, param3, 0);
+            n_alSynStartVoiceParams(&arg0->voice, arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * type_mult * port_get_master_volume()), param, param3, 0);
 #else
-            //n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7, param, param3, 0);
-            n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * g_port_current_fgm_multiplier), param, param3, 0);
+            n_alSynStartVoiceParams(&arg0->voice, (ALWaveTable *)(intptr_t)arg0->unk40, alCents2Ratio(arg0->unk2C + arg0->unk30), (s16)(((arg0->unk32 * arg0->unk38 * D_8009EDD0_406D0.unk_alsound_0x5A) >> 7) * type_mult * port_get_master_volume()), param, param3, 0);
 #endif
             arg0->unk2A = 1;
         }
@@ -5212,6 +5217,9 @@ void func_80026B90_27790(ALWhatever8009EDD0_siz34 *arg0)
 
 								if (arg0->unkALWhatever8009EDD0_siz34_0x28 != NULL)
 								{
+                                    // LUS: Hand the identity from the queue node to the hardware node!
+                                    arg0->unkALWhatever8009EDD0_siz34_0x28->port_is_voice = arg0->port_is_voice;
+
 									arg0->unkALWhatever8009EDD0_siz34_0x28->unk2B = arg0->unkALWhatever8009EDD0_siz34_0x1F;
 									arg0->unkALWhatever8009EDD0_siz34_0x28->unk30 = (s16)(((instr >> 3) * 100) - 1300) + var_t5;
 									var_t5 = 0;
@@ -5306,27 +5314,24 @@ ALWhatever8009EE0C* func_80026A6C_2766C(void *arg0)
 
 ALWhatever8009EDD0_siz34* func_80026A10_27610(u16 id)
 {
-	if (id >= D_8009EDD0_406D0.fgm_ucode_count)
-	{
-		return NULL;
-	}
-	return func_80026844_27444(D_8009EDD0_406D0.fgm_ucode_data[id]);
+  g_port_current_is_voice = (id >= 0x135) ? 1 : 0; // LUS: Tag the thread!
+
+  if (id >= D_8009EDD0_406D0.fgm_ucode_count)
+  {
+    return NULL;
+  }
+  return func_80026844_27444(D_8009EDD0_406D0.fgm_ucode_data[id]);
 }
 
 ALWhatever8009EDD0_siz34* func_800269C0_275C0(u16 id)
 {
-    // LUS: Determine FGM vs Voice (IDs 0x135 and up are Voices)
-    if (id >= 0x135) {
-      g_port_current_fgm_multiplier = port_get_voice_volume();
-    } else {
-      g_port_current_fgm_multiplier = port_get_sfx_volume();
-    }
+  g_port_current_is_voice = (id >= 0x135) ? 1 : 0; // LUS: Tag the thread!
 
-	if (id >= D_8009EDD0_406D0.fgm_ucode_count)
-	{
-		return NULL;
-	}
-	return func_80026958_27558(D_8009EDD0_406D0.fgm_ucode_data[id]);
+  if (id >= D_8009EDD0_406D0.fgm_ucode_count)
+  {
+    return NULL;
+  }
+  return func_80026958_27558(D_8009EDD0_406D0.fgm_ucode_data[id]);
 }
 
 ALWhatever8009EDD0_siz34* func_80026958_27558(void *id)
@@ -5378,6 +5383,7 @@ static ALWhatever8009EDD0_siz34* func_80026844_27444(void *id)
         temp_s0->unkALWhatever8009EDD0_siz34_0x2E = 0x7F;
         temp_s0->unkALWhatever8009EDD0_siz34_0x2F = 0x80;
         temp_s0->unkALWhatever8009EDD0_siz34_0x30 = 0x80;
+        temp_s0->port_is_voice = g_port_current_is_voice; // LUS: Save the identity to the queue item!
         
         D_8009EDD0_406D0.unk_alsound_0x4A++;
         

@@ -938,6 +938,15 @@ void scManagerRunLoop(sb32 arg)
 		syNetReplayInitDebugEnv();
 		syNetPeerInitDebugEnv();
 	}
+
+	// boot straight to CSS if enabled
+	extern int port_enhancement_boot_to_vs_css(void);
+	if (port_enhancement_boot_to_vs_css())
+	{
+		// Overwrite the starting scene
+		gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
+		gSCManagerSceneData.scene_prev = nSCKindPlayersVS;
+	}
 	port_log("SSB64: scManagerRunLoop — controllers=%d scene=%d\n",
 	         (int)gSYControllerConnectedNum, (int)gSCManagerSceneData.scene_curr);
 #endif
@@ -1096,6 +1105,17 @@ void scManagerRunLoop(sb32 arg)
 				syDmaLoadOverlay(&dSCManagerOverlays[1]);
 				syDmaLoadOverlay(&dSCManagerOverlays[26]);
 				mnPlayersVSStartScene();
+
+				// skip stage select
+				{
+					extern int port_get_comp_ruleset(void);
+					if (port_get_comp_ruleset() && gSCManagerSceneData.scene_curr == nSCKindMaps)
+					{
+						gSCManagerSceneData.gkind = nGRKindPupupu;
+						gSCManagerTransferBattleState.gkind = nGRKindPupupu;
+						gSCManagerSceneData.scene_curr = nSCKindVSBattle;
+					}
+				}
 				break;
 
 			case nSCKindMaps:
@@ -1108,7 +1128,83 @@ void scManagerRunLoop(sb32 arg)
 				syDmaLoadOverlay(&dSCManagerOverlays[2]);
 				syDmaLoadOverlay(&dSCManagerOverlays[3]);
 				syDmaLoadOverlay(&dSCManagerOverlays[4]);
+
+				// apply competitive ruleset
+				{
+					extern int port_get_comp_ruleset(void);
+					if (port_get_comp_ruleset())
+					{
+						int i;
+						extern __typeof__(gSCManagerTransferBattleState) gSCManagerVSBattleState;
+
+						gSCManagerTransferBattleState.game_rules = 0x2; // Stock Mode
+						gSCManagerTransferBattleState.time_limit = 8; // 8 minutes
+						gSCManagerTransferBattleState.stocks = 3; // 4 Stocks
+						gSCManagerTransferBattleState.is_show_score = FALSE;
+						gSCManagerTransferBattleState.item_toggles = 0; // No Items
+						gSCManagerTransferBattleState.item_appearance_rate = 4; // None
+						gSCManagerTransferBattleState.gkind = nGRKindPupupu; // Dream Land
+
+						// set Team Attack to ON
+						if (gSCManagerTransferBattleState.is_team_battle == TRUE)
+						{
+							gSCManagerTransferBattleState.is_team_attack = TRUE;
+						}
+
+						gSCManagerVSBattleState.game_rules = 0x2;
+						gSCManagerVSBattleState.time_limit = 0;
+						gSCManagerVSBattleState.stocks = 3;
+						gSCManagerVSBattleState.gkind = nGRKindPupupu;
+
+						for (i = 0; i < GMCOMMON_PLAYERS_MAX; i++)
+						{
+							if (gSCManagerTransferBattleState.players[i].pkind != 2)
+							{
+								gSCManagerTransferBattleState.players[i].stock_count = 3;
+								gSCManagerTransferBattleState.players[i].is_single_stockicon = FALSE;
+								gSCManagerTransferBattleState.players[i].falls = 0;
+								gSCManagerTransferBattleState.players[i].score = 0;
+							}
+						}
+					}
+					else
+					{
+						// vanilla timer fix
+						if (!(gSCManagerTransferBattleState.game_rules & 0x1))
+						{
+							gSCManagerTransferBattleState.time_limit = 0; // Infinite Time
+						}
+					}
+				}
+
+				// force default CPU level to 9 if checked
+				{
+					extern int port_enhancement_cpu_level_9(void);
+					if (port_enhancement_cpu_level_9())
+					{
+						int i;
+						for (i = 0; i < GMCOMMON_PLAYERS_MAX; i++)
+						{
+							// 1 = nFTPlayerKindCom (Slot is a CPU)
+							if (gSCManagerTransferBattleState.players[i].pkind == 1)
+							{
+								gSCManagerTransferBattleState.players[i].level = 9;
+							}
+						}
+					}
+				}
+
 				scVSBattleStartScene();
+
+				// clean up timer
+				{
+					extern int port_get_comp_ruleset(void);
+					if (port_get_comp_ruleset())
+					{
+						extern __typeof__(gSCManagerTransferBattleState) gSCManagerVSBattleState;
+						gSCManagerVSBattleState.time_limit = SCBATTLE_TIMELIMIT_INFINITE;
+					}
+				}
 				break;
 
 			case nSCKindUnknownMario:

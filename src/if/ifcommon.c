@@ -2612,7 +2612,16 @@ SObj* ifCommonTimerMakeDigits(void)
     GObj *interface_gobj;
     SObj *sobj;
 
+    /*
     if (!(gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) || (gSCManagerBattleState->time_limit == SCBATTLE_TIMELIMIT_INFINITE))
+    {
+        return NULL;
+    }
+    */
+
+    // Decouple timer HUD for Competitive Ruleset
+    extern int port_get_comp_ruleset(void);
+    if ((!(gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) && !(port_get_comp_ruleset() && gSCManagerSceneData.scene_curr == nSCKindVSBattle)) || (gSCManagerBattleState->time_limit == SCBATTLE_TIMELIMIT_INFINITE))
     {
         return NULL;
     }
@@ -2655,7 +2664,11 @@ void ifCommonTimerFuncRun(GObj *interface_gobj)
             sIFCommonTimerStamp = time_update;
             gSCManagerBattleState->time_passed += time_delta;
 
-            if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) && (gSCManagerBattleState->time_limit != SCBATTLE_TIMELIMIT_INFINITE))
+            //if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) && (gSCManagerBattleState->time_limit != SCBATTLE_TIMELIMIT_INFINITE))
+
+            // decouple timer logic for comp. ruleset
+            extern int port_get_comp_ruleset(void);
+            if (((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) || (port_get_comp_ruleset() && gSCManagerSceneData.scene_curr == nSCKindVSBattle)) && (gSCManagerBattleState->time_limit != SCBATTLE_TIMELIMIT_INFINITE))
             {
                 if (gSCManagerBattleState->time_remain != 0)
                 {

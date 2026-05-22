@@ -4573,6 +4573,41 @@ void mnPlayersVSFuncRun(GObj *gobj)
 	s32 i;
 	s32 gkind;
 
+	// lock game rules UI when competitive ruleset is enabled
+	{
+		extern int port_get_comp_ruleset(void);
+		if (port_get_comp_ruleset())
+		{
+			if ((sMNPlayersVSGameRule != 2) || (sMNPlayersVSStockValue != 3))
+			{
+				// Lock the memory values
+				sMNPlayersVSGameRule = 2;
+				sMNPlayersVSStockValue = 3;
+
+				// Safely eject the old graphic and immediately redraw "STOCK 4"
+				mnPlayersVSMakeStockSelect(sMNPlayersVSStockValue);
+			}
+		}
+	}
+
+	// lock CPU level UI to 9 when enabled
+	{
+		extern int port_enhancement_cpu_level_9(void);
+		// Now listens to the standalone toggle instead of the Ruleset!
+		if (port_enhancement_cpu_level_9())
+		{
+			int j;
+			for (j = 0; j < GMCOMMON_PLAYERS_MAX; j++)
+			{
+				if ((sMNPlayersVSSlots[j].pkind == 1) && (sMNPlayersVSSlots[j].cpu_level != 9))
+				{
+					sMNPlayersVSSlots[j].cpu_level = 9;
+					mnPlayersVSMakeHandicapLevelValue(j);
+				}
+			}
+		}
+	}
+
 	sMNPlayersVSTotalTimeTics++;
 
 	mnPlayersVSUpdateControllerOrders();
@@ -4804,6 +4839,17 @@ void mnPlayersVSInitVars(void)
 	sMNPlayersVSIsStart = FALSE;
 	sMNPlayersVSIsTeamBattle = gSCManagerTransferBattleState.is_team_battle;
 	sMNPlayersVSGameRule = gSCManagerTransferBattleState.game_rules;
+
+	// initial boot sync for competitive ruleset
+	{
+		extern int port_get_comp_ruleset(void);
+		if (port_get_comp_ruleset())
+		{
+			sMNPlayersVSGameRule = 2;   // 2 = SCBATTLE_GAMERULE_STOCK
+			sMNPlayersVSStockValue = 3; // 3 = 4 Stocks (UI adds +1 internally)
+		}
+	}
+
 	sMNPlayersVSIsResetPlayers = gSCManagerTransferBattleState.is_reset_players;
 	sMNPlayersVSGameRuleGObj = NULL;
 	sMNPlayersVSGameModeGObj = NULL;

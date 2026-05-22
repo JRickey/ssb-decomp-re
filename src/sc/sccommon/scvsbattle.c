@@ -97,6 +97,91 @@ void scVSBattleFuncUpdate(void)
 	syNetPeerUpdate();
 }
 
+// neutral spawn interceptor
+void port_comp_ruleset_get_spawn(s32 player, Vec3f* pos)
+{
+	extern int port_enhancement_neutral_spawns(void);
+	s32 total_players;
+
+	// 1. Default Behavior (Vanilla map lookup)
+	mpCollisionGetPlayerMapObjPosition(player, pos);
+
+	if (!port_enhancement_neutral_spawns()) return;
+
+	total_players = gSCManagerBattleState->pl_count + gSCManagerBattleState->cp_count;
+
+	// 2. 1v1 Neutral Spawns (Platform vs Platform)
+	if (total_players == 2)
+	{
+		s32 active_idx = 0;
+		s32 i;
+		for (i = 0; i < player; i++)
+		{
+			if (gSCManagerBattleState->players[i].pkind != nFTPlayerKindNot) active_idx++;
+		}
+		if (active_idx == 0) mpCollisionGetPlayerMapObjPosition(1, pos); // Left Plat
+		if (active_idx == 1) mpCollisionGetPlayerMapObjPosition(3, pos); // Right Plat
+	}
+
+	// 3. 2v2 Team Spawns (Plat + Ground Hook)
+	// By strictly checking is_team_battle here, 3-Player and 4-Player FFAs
+	// will just ignore this block and use the vanilla Default Behavior!
+	else if ((total_players == 4) && gSCManagerBattleState->is_team_battle)
+	{
+		Vec3f ground_spawn;
+		Vec3f left_plat;
+		Vec3f right_plat;
+
+		// Query the stage for the reference coordinates
+		mpCollisionGetPlayerMapObjPosition(0, &ground_spawn); // Gets Ground Y
+		mpCollisionGetPlayerMapObjPosition(1, &left_plat);    // Gets Left X
+		mpCollisionGetPlayerMapObjPosition(3, &right_plat);   // Gets Right X
+
+		s32 my_team = gSCManagerBattleState->players[player].team;
+		s32 team_left = -1;
+		s32 team_right = -1;
+		s32 my_team_member_idx = 0; // 0 = first member, 1 = second member
+		s32 i;
+
+		// Figure out which team goes on the left, and which goes on the right
+		for (i = 0; i < GMCOMMON_PLAYERS_MAX; i++)
+		{
+			if (gSCManagerBattleState->players[i].pkind != nFTPlayerKindNot)
+			{
+				s32 this_team = gSCManagerBattleState->players[i].team;
+
+				if (team_left == -1) team_left = this_team;
+				else if ((team_left != this_team) && (team_right == -1)) team_right = this_team;
+
+				if (i == player) break; // Stop counting when we reach ourselves
+				if (this_team == my_team) my_team_member_idx++;
+			}
+		}
+
+		// Assign Coordinates!
+		if (my_team == team_left)
+		{
+			if (my_team_member_idx == 0) *pos = left_plat; // Teammate 1 -> Plat
+			else
+			{
+				pos->x = left_plat.x;
+				pos->y = ground_spawn.y; // Teammate 2 -> Ground Hook
+				pos->z = left_plat.z;
+			}
+		}
+		else
+		{
+			if (my_team_member_idx == 0) *pos = right_plat; // Teammate 1 -> Plat
+			else
+			{
+				pos->x = right_plat.x;
+				pos->y = ground_spawn.y; // Teammate 2 -> Ground Hook
+				pos->z = right_plat.z;
+			}
+		}
+	}
+}
+
 // 0x8018D0E0 - Get player's initial facing direction for battle start
 s32 scVSBattleGetStartPlayerLR(s32 this_player)
 {
@@ -111,7 +196,8 @@ s32 scVSBattleGetStartPlayerLR(s32 this_player)
 	near_dist = 65536.0F;
 	near_spawn = 0.0F;
 
-	mpCollisionGetPlayerMapObjPosition(this_player, &this_spawn_pos);
+	//mpCollisionGetPlayerMapObjPosition(this_player, &this_spawn_pos);
+	port_comp_ruleset_get_spawn(this_player, &this_spawn_pos);
 
 	for (loop_player = 0; loop_player < ARRAY_COUNT(gSCManagerBattleState->players); loop_player++)
 	{
@@ -125,7 +211,8 @@ s32 scVSBattleGetStartPlayerLR(s32 this_player)
 		}
 		else if (gSCManagerBattleState->players[loop_player].player != gSCManagerBattleState->players[this_player].player)
 		{
-			mpCollisionGetPlayerMapObjPosition(loop_player, &loop_spawn_pos);
+			//mpCollisionGetPlayerMapObjPosition(loop_player, &loop_spawn_pos);
+			port_comp_ruleset_get_spawn(loop_player, &loop_spawn_pos);
 
 			distx = (loop_spawn_pos.x < this_spawn_pos.x) ? -(loop_spawn_pos.x - this_spawn_pos.x) : (loop_spawn_pos.x - this_spawn_pos.x);
 
@@ -204,7 +291,8 @@ void scVSBattleStartBattle(void)
 
 		desc.fkind = gSCManagerBattleState->players[player].fkind;
 
-		mpCollisionGetPlayerMapObjPosition(player, &desc.pos);
+		//mpCollisionGetPlayerMapObjPosition(player, &desc.pos);
+		port_comp_ruleset_get_spawn(player, &desc.pos);
 
 		desc.lr = scVSBattleGetStartPlayerLR(player);
 
@@ -476,7 +564,8 @@ void scVSBattleStartSuddenDeath(void)
 
 		desc.fkind = gSCManagerBattleState->players[player].fkind;
 
-		mpCollisionGetPlayerMapObjPosition(player, &desc.pos);
+		//mpCollisionGetPlayerMapObjPosition(player, &desc.pos);
+		port_comp_ruleset_get_spawn(player, &desc.pos);
 
 		desc.lr = scVSBattleGetStartPlayerLR(player);
 
@@ -592,4 +681,14 @@ void scVSBattleStartScene(void)
 	syNetPeerStopVSSession();
 	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 	gSCManagerSceneData.scene_curr = nSCKindVSResults;
+
+	// skip results (if enabled)
+	{
+		extern int port_enhancement_skip_results_screen(void);
+		if (port_enhancement_skip_results_screen())
+		{
+			// Override the next scene to immediately boot back to Character Select!
+			gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
+		}
+	}
 }

@@ -297,3 +297,21 @@ GObj* grYosterMakeGround(void)
 
     return ground_gobj;
 }
+
+#ifdef PORT
+// 0xPORT
+void grYosterStopCloudEvaporation(void)
+{
+    s32 i;
+
+    for (i = 0; i < ARRAY_COUNT(gGRCommonStruct.yoster.clouds); i++)
+    {
+        // If a player is standing on the cloud, lock the timer at 2.
+        // It will never hit 0, meaning it will never evaporate.
+        if (gGRCommonStruct.yoster.clouds[i].pressure_timer > 0)
+        {
+            gGRCommonStruct.yoster.clouds[i].pressure_timer = 2;
+        }
+    }
+}
+#endif

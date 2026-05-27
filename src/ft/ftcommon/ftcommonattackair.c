@@ -1,5 +1,6 @@
 #include <ft/fighter.h>
 #include <it/item.h>
+#include "enhancements/enhancements.h"
 
 // // // // // // // // // // // //
 //                               //
@@ -56,8 +57,17 @@ void ftCommonAttackAirProcMap(GObj *fighter_gobj)
 
     if (mpCommonCheckFighterLanding(fighter_gobj) != FALSE)
     {
-        if ((fp->motion_vars.flags.flag1 != 0) && (fp->tics_since_last_z > FTCOMMON_ATTACKAIR_SMOOTHLANDING_TICS_MAX))
+        // auto Z-cancel
+        if ((fp->motion_vars.flags.flag1 != 0) && (fp->tics_since_last_z > FTCOMMON_ATTACKAIR_SMOOTHLANDING_TICS_MAX) && !port_enhancement_IsAutoZCancelEnabled())
         {
+            // failed Z-cancel flash
+            // auto Z-cancel is off and the player missed the window
+            if (port_enhancement_IsFailedZCancelFlashEnabled())
+            {
+                // flash red
+                ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterDamageFireStart, 15);
+            }
+
             s32 landing_motion_id = nFTCommonMotionLandingAirStart - nFTCommonMotionAttackAirStart;
 
             if (fp->data->mainmotion->motion_desc[fp->motion_id + landing_motion_id].anim_file_id != 0)

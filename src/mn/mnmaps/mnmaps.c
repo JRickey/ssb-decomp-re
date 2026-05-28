@@ -290,6 +290,9 @@ s32 dMNMapsPageGkinds[nMNMapsPageCount][nMNMapsSlotCount] =
 		nMNMapsEmptyGKind, nMNMapsEmptyGKind, nMNMapsEmptyGKind, nMNMapsEmptyGKind, nMNMapsEmptyGKind,
 	},
 };
+
+static SObj *sMNMapsStageSelectTextSObj = NULL; // Tracks the cursive image
+static GObj *sMNMapsMusicSelectTextGObj = NULL; // Tracks our new text
 #endif
 
 // // // // // // // // // // // //
@@ -297,6 +300,82 @@ s32 dMNMapsPageGkinds[nMNMapsPageCount][nMNMapsSlotCount] =
 //           FUNCTIONS           //
 //                               //
 // // // // // // // // // // // //
+
+// music selection screen hookup
+#ifdef PORT
+extern void port_enhancement_music_select_reset(void);
+extern s32 port_enhancement_music_select_handle_a(u32 bgm_id);
+extern s32 port_enhancement_music_select_handle_b(void);
+
+// Helper to recolor the cursor. Native C handles the SObj pointer easily.
+void mnMapsSetCursorColor(u8 r, u8 g, u8 b)
+{
+	if (sMNMapsCursorGObj != NULL)
+	{
+		SObjGetStruct(sMNMapsCursorGObj)->sprite.red = r;
+		SObjGetStruct(sMNMapsCursorGObj)->sprite.green = g;
+		SObjGetStruct(sMNMapsCursorGObj)->sprite.blue = b;
+	}
+}
+
+// Maps the Stage ID directly to the raw integer BGM ID to avoid header conflicts
+u32 mnMapsGetBGMForGKind(s32 gkind)
+{
+	switch (gkind)
+	{
+		case nGRKindCastle:   return 6;
+		case nGRKindSector:   return 4;
+		case nGRKindJungle:   return 5;
+		case nGRKindZebes:    return 1;
+		case nGRKindHyrule:   return 9;
+		case nGRKindYoster:   return 8;
+		case nGRKindPupupu:   return 0;
+		case nGRKindYamabuki: return 7;
+		case nGRKindInishie:  return 2;
+		case nGRKindMetal:    return 37;
+		case nGRKindZako:     return 36;
+		case nGRKindLast:     return 25;
+		case nMNMapsRandomGKind: return 0xFFFF; // Special random flag
+		default:              return 0;
+	}
+}
+
+// Swaps the text between "Stage Select" and "MUSIC SELECT"
+void mnMapsSetLabelState(sb32 is_music_select)
+{
+	if (sMNMapsStageSelectTextSObj != NULL)
+	{
+		if (is_music_select)
+		{
+			// Move the cursive "Stage Select" off-screen
+			sMNMapsStageSelectTextSObj->pos.x = -1000.0F;
+
+			// Generate the blocky "MUSIC SELECT" text
+			if (sMNMapsMusicSelectTextGObj == NULL)
+			{
+				u32 color[3] = { 0x00, 0xAA, 0xFF }; // Match the blue cursor!
+				sMNMapsMusicSelectTextGObj = gcMakeGObjSPAfter(0, NULL, 6, GOBJ_PRIORITY_DEFAULT);
+				gcAddGObjDisplay(sMNMapsMusicSelectTextGObj, mnMapsLabelsProcDisplay, 4, GOBJ_PRIORITY_DEFAULT, ~0);
+
+				// Draw the text exactly where the cursive image used to be
+				mnMapsMakeString(sMNMapsMusicSelectTextGObj, "MUSIC SELECT", 205.0F, 128.0F, color);
+			}
+		}
+		else
+		{
+			// Bring the cursive "Stage Select" back to its original position
+			sMNMapsStageSelectTextSObj->pos.x = 172.0F;
+
+			// Destroy the "MUSIC SELECT" text
+			if (sMNMapsMusicSelectTextGObj != NULL)
+			{
+				gcEjectGObj(sMNMapsMusicSelectTextGObj);
+				sMNMapsMusicSelectTextGObj = NULL;
+			}
+		}
+	}
+}
+#endif
 
 // 0x80131B00
 void mnMapsAllocModelHeaps(void)
@@ -634,6 +713,7 @@ void mnMapsMakeLabels(void)
 
 #ifdef PORT
 	sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNMapsFiles[2], llMNMapsStageSelectTextSprite));
+	sMNMapsStageSelectTextSObj = sobj; // save the pointer so we can move it off-screen later
 #else
 	sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNMapsFiles[2], &llMNMapsStageSelectTextSprite));
 #endif
@@ -2393,6 +2473,9 @@ void mnMapsInitVars(void)
 #ifdef PORT
 	s32 saved_gkind;
 	s32 saved_page;
+	port_enhancement_music_select_reset(); // reset hook for music selection
+	sMNMapsStageSelectTextSObj = NULL; // reset our text tracking pointers
+	sMNMapsMusicSelectTextGObj = NULL;
 #endif
 
 	sMNMapsNameLogoGObj = NULL;
@@ -2514,9 +2597,32 @@ void mnMapsFuncRun(GObj *gobj)
 
 		if (scSubsysControllerGetPlayerTapButtons(A_BUTTON | START_BUTTON))
 		{
+			#ifdef PORT
+			s32 action = port_enhancement_music_select_handle_a(mnMapsGetBGMForGKind(mnMapsGetGroundKind(sMNMapsCursorSlot)));
+			if (action == 1)
+			{
+				// Phase 1: Stage Locked
+				mnMapsSaveSceneData2();
+				func_800269C0_275C0(nSYAudioFGMStageSelect); // Confirm sound
+				mnMapsSetCursorColor(0x00, 0xAA, 0xFF);      // Turn cursor Blue
+				mnMapsSetLabelState(TRUE); // Change text to "Music Select"
+				return;                                      // Halt scene transition
+			}
+			else if (action == 2)
+			{
+				// Phase 2: Music Locked (proceeds to transition)
+				func_800269C0_275C0(nSYAudioFGMStageSelect);
+			}
+			else
+			{
+				// Original Behavior
+				mnMapsSaveSceneData2();
+				func_800269C0_275C0(nSYAudioFGMStageSelect);
+			}
+			#else
 			mnMapsSaveSceneData2();
 			func_800269C0_275C0(nSYAudioFGMStageSelect);
-
+			#endif
 			if (sMNMapsIsTrainingMode == TRUE)
 			{
 				gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
@@ -2529,8 +2635,19 @@ void mnMapsFuncRun(GObj *gobj)
 			}
 			syTaskmanSetLoadScene();
 		}
+
 		if (scSubsysControllerGetPlayerTapButtons(B_BUTTON))
 		{
+			#ifdef PORT
+			if (port_enhancement_music_select_handle_b() == 1)
+			{
+				// Cancel music selection and return to stage selection
+				func_800269C0_275C0(nSYAudioFGMMenuDenied); // Back sound
+				mnMapsSetCursorColor(0xFF, 0x00, 0x00);     // Turn cursor Red
+				mnMapsSetLabelState(FALSE); // Restore "Stage Select" text
+				return;
+			}
+			#endif
 			mnMapsSaveSceneData2();
 
 			if (sMNMapsIsTrainingMode == TRUE)

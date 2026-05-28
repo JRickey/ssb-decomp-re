@@ -1641,6 +1641,11 @@ static sb32 syAudioHasSoundPlayers(void)
 }
 #endif
 
+#ifdef PORT
+// ShuffleMusic.cpp
+extern u32 port_enhancement_shuffle_music(u32 requested_bgm);
+#endif
+
 // 0x80020AB4
 s32 syAudioPlayBGM(s32 sngplayer, u32 bgm)
 {
@@ -1658,6 +1663,9 @@ s32 syAudioPlayBGM(s32 sngplayer, u32 bgm)
                      (int)sngplayer, (unsigned)bgm, (int)sSYAudioSeqFile->seqCount);
         }
     }
+
+    bgm = port_enhancement_shuffle_music(bgm); // music shuffler
+
 #endif
     if (bgm < sSYAudioSeqFile->seqCount)
     {

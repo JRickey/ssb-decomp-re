@@ -3,6 +3,9 @@
 #include <it/item.h>
 #include <gr/ground.h>
 #include <sc/scene.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -3338,7 +3341,7 @@ u8 *dFTComputerPlayerInputScripts[/* */] =
     dFTComputerPlayerInputScript45,
     dFTComputerPlayerInputScript46,
     dFTComputerPlayerInputScript47,
-    dFTComputerPlayerInputScript48
+    dFTComputerPlayerInputScript48,
 };
 
 // // // // // // // // // // // //
@@ -3988,7 +3991,11 @@ sb32 ftComputerCheckDetectTarget(FTStruct *this_fp, f32 detect_range_base)
     this_tvel_base = -this_fp->attr->tvel_base;
     this_gravity = this_fp->attr->gravity;
 
+#ifdef PORT
+    comattack = (FTComputerAttack *)port_fighter_computer_attack_list(this_fp->fkind);
+#else
     comattack = dFTComputerAttackList[this_fp->fkind];
+#endif
 
     if (this_fp->ga != nMPKineticsGround)
     {
@@ -4423,6 +4430,20 @@ sb32 ftComputerCheckDetectTarget(FTStruct *this_fp, f32 detect_range_base)
             default:
                 break;
             }
+#ifdef PORT
+            /* PORT: SR cpu_attack_weight dispatch (AI.asm _custom_weight_table,
+             * Crash routine Attacks.asm 147-183). A per-fkind routine may
+             * reweight this candidate (SR reads/writes f2 = the detect_ranges_x
+             * slot) before it is accumulated into the running total. */
+            {
+                f32 (*ai_weight)(FTStruct *, int, f32) =
+                    (f32 (*)(FTStruct *, int, f32))port_fighter_ai_attack_weight_routine(this_fp->fkind);
+                if (ai_weight != NULL)
+                {
+                    detect_ranges_x[i] = ai_weight(this_fp, input_kinds[i], detect_ranges_x[i]);
+                }
+            }
+#endif
             detect_ranges_x[i] += detect_far_x;
             detect_far_x = detect_ranges_x[i];
         }
@@ -4444,6 +4465,22 @@ sb32 ftComputerCheckDetectTarget(FTStruct *this_fp, f32 detect_range_base)
                     }
                 }
                 else com->input_repeat_count = 0;
+
+#ifdef PORT
+                /* PORT: SR ai_attack_prevent dispatch (AI.asm PREVENT_ATTACK,
+                 * Crash routine 3034-3056). A per-fkind routine may veto this
+                 * attack at commit time - SR sets t2=1 to abort the SD; here a
+                 * nonzero return means "don't commit", same as the Purin guard
+                 * below. */
+                {
+                    int (*ai_prevent)(FTStruct *, int) =
+                        (int (*)(FTStruct *, int))port_fighter_ai_attack_prevent_routine(this_fp->fkind);
+                    if ((ai_prevent != NULL) && (ai_prevent(this_fp, input_kinds[i]) != 0))
+                    {
+                        return FALSE;
+                    }
+                }
+#endif
 
                 ftComputerSetCommandWaitShort(this_fp, input_kinds[i]);
 
@@ -6563,6 +6600,21 @@ void ftComputerFollowObjectiveRecover(FTStruct *fp)
 #endif
 
         ftComputerFollowObjectiveWalk(fp);
+
+#ifdef PORT
+        /* PORT: SR custom_recovery_logic dispatch (AI.asm:384-411). After the
+         * vanilla walk-toward step, a per-fkind recovery routine may steer the
+         * CPU back to the ledge (Crash fires NSP_TOWARDS - Attacks.asm 67-145).
+         * SR runs this for every character with a recovery_logic table entry. */
+        {
+            void (*ai_recover)(FTStruct *) =
+                (void (*)(FTStruct *))port_fighter_ai_recovery_routine(fp->fkind);
+            if (ai_recover != NULL)
+            {
+                ai_recover(fp);
+            }
+        }
+#endif
     }
 }
 

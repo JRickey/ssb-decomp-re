@@ -1,6 +1,24 @@
 #include <ft/fighter.h>
 #include <reloc_data.h>
 
+#ifdef PORT
+/* The rapid-jab (Attack100) entry + per-character status/input switches key on
+ * fp->fkind against a vanilla whitelist; a synthetic fighter's fkind is not in
+ * it, so a Captain/Fox/Link-parented synth with jab_3 never enters its parent's
+ * rapid jab. Resolve the synth's PARENT kind first via the
+ * FighterParentKindResolveEvent query (no-op for vanilla fighters / with no
+ * listener — the payload comes back unchanged). */
+#include "hooks/Events.h"
+static s32 ftCommonAttack100ResolveParentKind(s32 fkind)
+{
+    CALL_EVENT(FighterParentKindResolveEvent, fkind, fkind);
+    return FighterParentKindResolveEvent_.resolved_fkind;
+}
+#define FT_A100_KIND(fp) (ftCommonAttack100ResolveParentKind((fp)->fkind))
+#else
+#define FT_A100_KIND(fp) ((fp)->fkind)
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -9,16 +27,16 @@
 
 #define ftCommonAttack100CheckFighterKind(fp) \
 (                                             \
-    ((fp)->fkind == nFTKindFox)        ||  \
-    ((fp)->fkind == nFTKindNFox)    ||  \
-    ((fp)->fkind == nFTKindLink)       ||  \
-    ((fp)->fkind == nFTKindNLink)   ||  \
-    ((fp)->fkind == nFTKindKirby)      ||  \
-    ((fp)->fkind == nFTKindNKirby)  ||  \
-    ((fp)->fkind == nFTKindPurin)      ||  \
-    ((fp)->fkind == nFTKindNPurin)  ||  \
-    ((fp)->fkind == nFTKindCaptain)    ||  \
-    ((fp)->fkind == nFTKindNCaptain)    \
+    (FT_A100_KIND(fp) == nFTKindFox)        ||  \
+    (FT_A100_KIND(fp) == nFTKindNFox)    ||  \
+    (FT_A100_KIND(fp) == nFTKindLink)       ||  \
+    (FT_A100_KIND(fp) == nFTKindNLink)   ||  \
+    (FT_A100_KIND(fp) == nFTKindKirby)      ||  \
+    (FT_A100_KIND(fp) == nFTKindNKirby)  ||  \
+    (FT_A100_KIND(fp) == nFTKindPurin)      ||  \
+    (FT_A100_KIND(fp) == nFTKindNPurin)  ||  \
+    (FT_A100_KIND(fp) == nFTKindCaptain)    ||  \
+    (FT_A100_KIND(fp) == nFTKindNCaptain)    \
 )
 
 // // // // // // // // // // // //
@@ -41,7 +59,17 @@ void ftCommonAttack100StartSetStatus(GObj *fighter_gobj)
 
     if (ftCommonGetCheckInterruptCommon(fighter_gobj) == FALSE)
     {
-        switch (fp->fkind)
+#ifdef PORT
+        /* SR rapid_jab_begin_action table: a synth's begin status may differ
+         * from its parent's (Sheik = Fox-aligned 0xDC, not Captain's 0xDD).
+         * status_id stays -1 (vanilla switch below) with no listener. */
+        {
+            CALL_EVENT(FighterRapidJabStatusQueryEvent, fp->fkind, /* phase */ 0, -1);
+            status_id = FighterRapidJabStatusQueryEvent_.status_id;
+        }
+        if (status_id < 0)
+#endif
+        switch (FT_A100_KIND(fp))
         {
         case nFTKindFox:
         case nFTKindNFox:
@@ -156,7 +184,15 @@ void ftCommonAttack100LoopSetStatus(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 status_id;
 
-    switch (fp->fkind)
+#ifdef PORT
+    /* SR rapid_jab_loop_action table (Sheik = Fox-aligned 0xDD). */
+    {
+        CALL_EVENT(FighterRapidJabStatusQueryEvent, fp->fkind, /* phase */ 1, -1);
+        status_id = FighterRapidJabStatusQueryEvent_.status_id;
+    }
+    if (status_id < 0)
+#endif
+    switch (FT_A100_KIND(fp))
     {
     case nFTKindFox:
     case nFTKindNFox:
@@ -193,7 +229,15 @@ void ftCommonAttack100EndSetStatus(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 status_id;
 
-    switch (fp->fkind)
+#ifdef PORT
+    /* SR rapid_jab_ending_action table (Sheik = Fox-aligned 0xDE). */
+    {
+        CALL_EVENT(FighterRapidJabStatusQueryEvent, fp->fkind, /* phase */ 2, -1);
+        status_id = FighterRapidJabStatusQueryEvent_.status_id;
+    }
+    if (status_id < 0)
+#endif
+    switch (FT_A100_KIND(fp))
     {
     case nFTKindFox:
     case nFTKindNFox:
@@ -243,7 +287,7 @@ sb32 ftCommonAttack100StartCheckInterruptCommon(GObj *fighter_gobj)
 
         fp->attack1_input_count++;
 
-        switch (fp->fkind)
+        switch (FT_A100_KIND(fp))
         {
         case nFTKindFox:
         case nFTKindNFox:

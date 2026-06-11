@@ -2111,9 +2111,11 @@ void sc1PGameFuncStart(void)
     FTData *plns;
     size_t largest_size;
     FTStruct *fp;
+#ifndef PORT
     sb32 (*func_sign)(void*);
     void *file;
     u8 signature[0x10];
+#endif
     s32 i;
     FTDesc desc;
     SYColorRGBA color;
@@ -2121,6 +2123,12 @@ void sc1PGameFuncStart(void)
     sc1PGameSetupStageAll();
     sc1PGameSetupFiles();
 
+#ifndef PORT
+    /* Vanilla anti-piracy: after 92 boots, validate a signature by loading a
+     * function out of a reloc file and CALLING it. That is N64 MIPS code -- the
+     * port can't execute it, so func_sign jumps to garbage and crashes. The check
+     * is meaningless on PC, so skip it. (The lower-boot checks, boot>21/42/68, only
+     * test gSYMainImem/DmemOK flags, which pass here, so they need no guard.) */
     if (!(gSCManagerBackupData.error_flags & LBBACKUP_ERROR_VSBATTLECASTLE) && (gSCManagerBackupData.boot > 92))
     {
         syDmaReadRom(0xF10, signature, ARRAY_COUNT(signature));
@@ -2136,6 +2144,7 @@ void sc1PGameFuncStart(void)
             gSCManagerBackupData.error_flags |= LBBACKUP_ERROR_VSBATTLECASTLE;
         }
     }
+#endif
     gcMakeDefaultCameraGObj(nGCCommonLinkIDCamera, GOBJ_PRIORITY_DEFAULT, 100, COBJ_FLAG_ZBUFFER, GPACK_RGBA8888(0x00, 0x00, 0x00, 0xFF));
     efParticleInitAll();
     ftParamInitGame();

@@ -1,5 +1,23 @@
 #include <ft/fighter.h>
 #include <it/item.h>
+
+#ifdef PORT
+/* Jab2->Jab3 and the Captain-branch jab transitions key on fp->fkind; a synth's
+ * fkind misses these whitelists, so its jab combo never advances to Jab3 (the
+ * gateway into rapid jab). Resolve the synth's PARENT kind first via the
+ * FighterParentKindResolveEvent query; with no listener (or for a non-synth
+ * fighter) the payload comes back unchanged and the vanilla gates apply. */
+#include "hooks/Events.h"
+static s32 ftCommonAttack1ResolveParentKind(s32 fkind)
+{
+    CALL_EVENT(FighterParentKindResolveEvent, fkind, fkind);
+    return FighterParentKindResolveEvent_.resolved_fkind;
+}
+#define FT_A1_KIND(fp) (ftCommonAttack1ResolveParentKind((fp)->fkind))
+#else
+#define FT_A1_KIND(fp) ((fp)->fkind)
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -8,17 +26,17 @@
 
 #define ftCommonAttack13CheckFighterKind(fp)\
 (                                           \
-    ((fp)->fkind == nFTKindMario)   ||      \
-    ((fp)->fkind == nFTKindMMario)  ||      \
-    ((fp)->fkind == nFTKindNMario)  ||      \
-    ((fp)->fkind == nFTKindLuigi)   ||      \
-    ((fp)->fkind == nFTKindNLuigi)  ||      \
-    ((fp)->fkind == nFTKindCaptain) ||      \
-    ((fp)->fkind == nFTKindNCaptain)||      \
-    ((fp)->fkind == nFTKindLink)    ||      \
-    ((fp)->fkind == nFTKindNLink)   ||      \
-    ((fp)->fkind == nFTKindNess)    ||      \
-    ((fp)->fkind == nFTKindNNess)           \
+    (FT_A1_KIND(fp) == nFTKindMario)   ||      \
+    (FT_A1_KIND(fp) == nFTKindMMario)  ||      \
+    (FT_A1_KIND(fp) == nFTKindNMario)  ||      \
+    (FT_A1_KIND(fp) == nFTKindLuigi)   ||      \
+    (FT_A1_KIND(fp) == nFTKindNLuigi)  ||      \
+    (FT_A1_KIND(fp) == nFTKindCaptain) ||      \
+    (FT_A1_KIND(fp) == nFTKindNCaptain)||      \
+    (FT_A1_KIND(fp) == nFTKindLink)    ||      \
+    (FT_A1_KIND(fp) == nFTKindNLink)   ||      \
+    (FT_A1_KIND(fp) == nFTKindNess)    ||      \
+    (FT_A1_KIND(fp) == nFTKindNNess)           \
 )
 
 // // // // // // // // // // // //
@@ -48,7 +66,7 @@ void ftCommonAttack12ProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((fp->fkind != nFTKindCaptain) && (fp->fkind != nFTKindNCaptain) && (fp->motion_vars.flags.flag1 != 0) && (fp->is_goto_attack100))
+    if ((FT_A1_KIND(fp) != nFTKindCaptain) && (FT_A1_KIND(fp) != nFTKindNCaptain) && (fp->motion_vars.flags.flag1 != 0) && (fp->is_goto_attack100))
     {
         ftCommonAttack100StartSetStatus(fighter_gobj);
     }
@@ -64,7 +82,7 @@ void ftCommonAttack13ProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (((fp->fkind == nFTKindCaptain) || (fp->fkind == nFTKindNCaptain)) && (fp->motion_vars.flags.flag1 != 0) && (fp->is_goto_attack100))
+    if (((FT_A1_KIND(fp) == nFTKindCaptain) || (FT_A1_KIND(fp) == nFTKindNCaptain)) && (fp->motion_vars.flags.flag1 != 0) && (fp->is_goto_attack100))
     {
         ftCommonAttack100StartSetStatus(fighter_gobj);
     }

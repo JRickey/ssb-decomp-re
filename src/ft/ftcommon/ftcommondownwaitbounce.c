@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
+#include "fighter_registry.h"
 #endif
 
 // // // // // // // // // // // //
@@ -102,7 +103,11 @@ void ftCommonDownBounceUpdateEffects(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     ftParamMakeEffect(fighter_gobj, nEFKindImpactWave, nFTPartsJointTopN, NULL, NULL, fp->lr, FALSE, FALSE);
+#ifdef PORT
+    func_800269C0_275C0((u16)port_fighter_down_bounce_fgm(fp->fkind));
+#else
     func_800269C0_275C0(dFTCommonDataDownBounceSFX[fp->fkind]);
+#endif
     ftParamMakeRumble(fp, 4, 0);
 }
 

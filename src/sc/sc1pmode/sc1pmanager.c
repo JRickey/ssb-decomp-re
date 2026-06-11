@@ -337,7 +337,18 @@ void sc1PManagerUpdateScene(void)
                 gSCManagerTransferBattleState.players[_p].fighter_gobj = NULL;
             }
 #endif
+#ifdef PORT
+            /* a synth fkind >= 32 makes this shift UB (wraps mod 32 on x86 and
+             * wrongly excludes a vanilla ally); a synth is never in the u16 mask */
+            this_mask = (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER);
+
+            if (gSCManagerSceneData.fkind < GMCOMMON_FIGHTERS_PLAYABLE_NUM)
+            {
+                this_mask &= ~(1 << gSCManagerSceneData.fkind);
+            }
+#else
             this_mask = (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & ~(1 << gSCManagerSceneData.fkind);
+#endif
 
             is_player_lose = FALSE;
 

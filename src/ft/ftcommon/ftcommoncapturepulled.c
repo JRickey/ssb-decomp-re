@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <it/item.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -132,6 +135,33 @@ void ftCommonCapturePulledProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
     capture_fp = ftGetStruct(capture_gobj);
 
     this_fp->lr = -capture_fp->lr;
+
+#ifdef PORT
+    /* SR CustomGrabAction.asm capture_action_override_/capture_position_fix_:
+     * a grabber with a custom capture action (Wario = ThrownDK) puts the grabbed
+     * opponent into that action instead of CapturePulled, and uses the Thrown
+     * physics path (ftCommonThrownProcPhysics) for the frame-1 position instead
+     * of the CapturePulled one. Keyed off the grabber's fkind through the port
+     * registry; 0 = vanilla behavior for every other fighter. */
+    {
+        int custom_action = port_fighter_custom_capture_action(capture_fp->fkind);
+
+        if (custom_action != 0)
+        {
+            ftMainSetStatus(fighter_gobj, custom_action, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
+            ftMainPlayAnimEventsAll(fighter_gobj);
+
+            this_fp->status_vars.common.capture.is_goto_pulled_wait = FALSE;
+
+            ftParamSetCaptureImmuneMask(this_fp, FTCATCHKIND_MASK_ALL);
+            ftParamMakeRumble(this_fp, 9, 0);
+            ftPhysicsStopVelAll(fighter_gobj);
+            ftCommonThrownProcPhysics(fighter_gobj);
+            ftCommonCapturePulledProcMap(fighter_gobj);
+            return;
+        }
+    }
+#endif
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusCapturePulled, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);

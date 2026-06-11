@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <sc/scene.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -114,6 +117,18 @@ void ftCommonCaptureShoulderedProcInterrupt(GObj *fighter_gobj)
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
     FTStruct *capture_fp = ftGetStruct(capture_gobj);
+
+#ifdef PORT
+    /* SR CustomGrabAction.asm capture_dk_break_fix_: a grabber using ThrownDK as
+     * its custom capture action (Wario) overrides the mash/break-out logic. The
+     * grabber's interrupt routine runs first; if it returns nonzero the whole
+     * break-out routine is skipped so the grabbed opponent can't free themselves.
+     * Keyed off the grabber's fkind; unregistered fkinds fall through to vanilla. */
+    if (port_fighter_custom_capture_dk_interrupt(capture_fp->fkind, capture_fp) != 0)
+    {
+        return;
+    }
+#endif
 
     ftCommonCaptureTrappedUpdateBreakoutVars(this_fp);
 

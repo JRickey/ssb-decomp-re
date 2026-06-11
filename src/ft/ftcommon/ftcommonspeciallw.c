@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
+#include "fighter_registry.h"
 #endif
 
 // // // // // // // // // // // //
@@ -67,7 +68,14 @@ sb32 ftCommonSpecialLwCheckInterruptCommon(GObj *fighter_gobj)
 #ifdef PORT
         port_log("SSB64: SpecialLwCheck -> PASS, calling down-B for fkind=%d\n", fp->fkind);
 #endif
+#ifdef PORT
+        {
+            PortFTSpecialEnterFn h = port_fighter_special_handler(fp->fkind, PORT_FIGHTER_SPECIAL_LW);
+            if (h != NULL) h(fighter_gobj);
+        }
+#else
         dFTCommonSpecialLwStatusList[fp->fkind](fighter_gobj);
+#endif
 
         return TRUE;
     }

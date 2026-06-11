@@ -11,6 +11,10 @@ extern void port_log(const char *fmt, ...);
 #ifdef PORT
 extern void portFixupFTAttributes(void *attr);
 extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned int num_words);
+#include "fighter_registry.h"
+/* Length of the FTKirbyCopy table in 228_KirbyMainMotion (dKirbyMainMotion_0x0000):
+ * one row per inhalable fighter, nFTKindMario..nFTKindNNess. NOT nFTKindEnumCount. */
+#define FTKIRBY_COPY_TABLE_COUNT 27
 #endif
 
 // // // // // // // // // // // //
@@ -55,7 +59,11 @@ void *gFTManagerCommonFile;
 size_t gFTManagerFigatreeHeapSize;
 
 // 0x80130DA0
-LBFileNode sFTManagerForceStatusBuffer[7];
+/* Bumped from 7 in vanilla. CE-registered synthetic fighters chain
+ * through more per-action figatree loads than vanilla anticipates; the
+ * original cap tripped "Force Status Buffer is full !!" on rapid status
+ * transitions (Crash transitioning between Walk/Run/Jump/etc.). */
+LBFileNode sFTManagerForceStatusBuffer[64];
 
 // // // // // // // // // // // //
 //                               //
@@ -289,7 +297,11 @@ void ftManagerSetPrevPartsAlloc(FTParts *parts)
 // 0x800D7694
 void ftManagerSetupFilesMainKind(s32 fkind)
 {
+#ifdef PORT
+    FTData *data = port_fighter_data(fkind);
+#else
     FTData *data = dFTManagerDataFiles[fkind];
+#endif
 
     *data->p_file_main = lbRelocGetExternHeapFile(data->file_main_id, syTaskmanMalloc(lbRelocGetFileSize(data->file_main_id), 0x10));
 
@@ -308,7 +320,11 @@ void ftManagerSetupFilesMainKind(s32 fkind)
 // 0x800D7710
 void ftManagerSetupFilesKind(s32 fkind)
 {
+#ifdef PORT
+    FTData *data = port_fighter_data(fkind);
+#else
     FTData *data = dFTManagerDataFiles[fkind];
+#endif
 
     if (data->file_mainmotion_id != 0)
     {
@@ -360,7 +376,11 @@ void ftManagerSetupFilesPlayablesAll(void)
 // 0x800D786C
 void ftManagerSetupFilesAllKind(s32 fkind)
 {
+#ifdef PORT
+    FTData *data = port_fighter_data(fkind);
+#else
     FTData *data = dFTManagerDataFiles[fkind];
+#endif
 
     if (*data->p_file_main == NULL)
     {
@@ -372,7 +392,11 @@ void ftManagerSetupFilesAllKind(s32 fkind)
 // 0x800D78B4
 void* ftManagerAllocFigatreeHeapKind(s32 fkind)
 {
+#ifdef PORT
+    FTData *data = port_fighter_data(fkind);
+#else
     FTData *data = dFTManagerDataFiles[fkind];
+#endif
 
     return syTaskmanMalloc(data->file_anim_size, 0x10);
 }
@@ -715,8 +739,13 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
              * either; the N64 build relies on the same precondition. */
             if (copy != NULL)
             {
+                /* The FTKirbyCopy table (228_KirbyMainMotion dKirbyMainMotion_0x0000)
+                 * is exactly 27 entries — one per inhalable fighter, ending at
+                 * nFTKindNNess. nFTKindGDonkey/nFTKindEnumCount have no copy row, so
+                 * iterating to nFTKindEnumCount (28) byteswaps copy[27] one entry past
+                 * the table. Cap at the real length. */
                 s32 i;
-                for (i = 0; i < nFTKindEnumCount; i++)
+                for (i = 0; i < FTKIRBY_COPY_TABLE_COUNT; i++)
                 {
                     portFixupStructU16(&copy[i], 0, 1);
                 }
@@ -724,7 +753,35 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
 #endif
             if (fp->fkind == nFTKindKirby)
             {
+#ifdef PORT
+                /* A fresh or respawned Kirby has copy_id == nFTKindKirby (no
+                 * power), so it gets no hat, matching vanilla. Only re-apply the
+                 * synth's carried custom hat when Kirby actually holds a copy. */
+                s32 copy_id = fp->passive_vars.kirby.copy_id;
+                s32 modelpart_id;
+                if (copy_id == nFTKindKirby)
+                {
+                    port_kirby_set_pending_hat(fp->player, 0);
+                    modelpart_id = copy[nFTKindKirby].copy_modelpart_id;
+                }
+                else if (copy_id >= 0 && copy_id < FTKIRBY_COPY_TABLE_COUNT)
+                {
+                    /* Vanilla inhalable fighter: its real copy row. */
+                    modelpart_id = copy[copy_id].copy_modelpart_id;
+                }
+                else
+                {
+                    /* Synth copy (copy_id past the 27-entry copy[] table): use its
+                     * carried hat - built-in cap (<0x0F) OR custom (>=0x0F). The old
+                     * (pending>=0x0F) gate OOB-read copy[copy_id] for a synth whose
+                     * Kirby hat is a built-in modelpart (e.g. Young Link's 0x0A),
+                     * dropping the hat on respawn. Mirrors the KHE copy_id-range fix. */
+                    modelpart_id = port_kirby_get_pending_hat(fp->player);
+                }
+                ftParamSetModelPartDefaultID(fighter_gobj, FTKIRBY_COPY_MODELPARTS_JOINT, modelpart_id);
+#else
                 ftParamSetModelPartDefaultID(fighter_gobj, FTKIRBY_COPY_MODELPARTS_JOINT, copy[fp->passive_vars.kirby.copy_id].copy_modelpart_id);
+#endif
             }
         }
         break;
@@ -784,7 +841,11 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
     fp->pkind = desc->pkind;
     fp->fighter_gobj = fighter_gobj;
     fp->fkind = desc->fkind;
+#ifdef PORT
+    fp->data = port_fighter_data(fp->fkind);
+#else
     fp->data = dFTManagerDataFiles[fp->fkind];
+#endif
     attr = fp->attr = lbRelocGetFileData(FTAttributes*, *fp->data->p_file_main, fp->data->o_attributes);
 #ifdef PORT
     portFixupFTAttributes(attr);
@@ -950,6 +1011,13 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
             fp->damage_colls[i].hitstatus = nGMHitStatusNormal;
             fp->damage_colls[i].joint_id = attr->damage_coll_descs[i].joint_id;
             fp->damage_colls[i].joint = fp->joints[fp->damage_colls[i].joint_id];
+#ifdef PORT
+            port_log("SSB64: damage_coll[%d] fkind=%d joint_id=%d joint=%p user_data=%p\n",
+                i, (int)fp->fkind,
+                attr->damage_coll_descs[i].joint_id,
+                (void*)fp->damage_colls[i].joint,
+                fp->damage_colls[i].joint ? (void*)fp->damage_colls[i].joint->user_data.p : NULL);
+#endif
             fp->damage_colls[i].placement = attr->damage_coll_descs[i].placement;
             fp->damage_colls[i].is_grabbable = attr->damage_coll_descs[i].is_grabbable;
             fp->damage_colls[i].offset = attr->damage_coll_descs[i].offset;

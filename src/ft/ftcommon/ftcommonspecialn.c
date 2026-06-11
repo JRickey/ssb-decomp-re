@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
+#include "fighter_registry.h"
 #endif
 
 // // // // // // // // // // // //
@@ -84,6 +85,34 @@ void ftKirbySpecialNSetStatusSelect(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    /* Synth copy power: copy_id is the inhaled synth's own fkind, which OOBs
+     * the 27-entry vanilla dispatch table. SR patches kirby_ground_nsp[victim]
+     * to the synth's ground neutral-B (e.g. Crash -> CrashNSP.ground_initial_),
+     * so run the synth's registered ground-N handler directly on Kirby's gobj
+     * -- Kirby performs the synth's REAL spin, never the parent's special. */
+    if (fp->passive_vars.kirby.copy_id >= nFTKindEnumCount)
+    {
+        PortFTSpecialEnterFn h =
+            port_fighter_special_handler(fp->passive_vars.kirby.copy_id, PORT_FIGHTER_SPECIAL_N);
+        if (h != NULL)
+        {
+            /* The synth handler calls ftMainSetStatus with the synth's own
+             * special action id; route that status's desc lookup to the synth's
+             * table for the duration of the call, then restore. */
+            port_kirby_set_copy_special_fkind(fp->passive_vars.kirby.copy_id);
+            h(fighter_gobj);
+            port_kirby_set_copy_special_fkind(-1);
+        }
+        else
+        {
+            /* No registered ground-N handler for this synth: fall back to
+             * Kirby's own inhale start rather than indexing OOB. */
+            ftKirbySpecialNStartSetStatus(fighter_gobj);
+        }
+        return;
+    }
+#endif
     dFTKirbySpecialNStatusList[fp->passive_vars.kirby.copy_id](fighter_gobj);
 }
 
@@ -113,7 +142,14 @@ sb32 ftCommonSpecialNCheckInterruptCommon(GObj *fighter_gobj)
             {
                 ftParamSetStickLR(fp);
             }
+#ifdef PORT
+            {
+                PortFTSpecialEnterFn h = port_fighter_special_handler(fp->fkind, PORT_FIGHTER_SPECIAL_N);
+                if (h != NULL) h(fighter_gobj);
+            }
+#else
             dFTCommonSpecialNStatusList[fp->fkind](fighter_gobj);
+#endif
 
             return TRUE;
         }

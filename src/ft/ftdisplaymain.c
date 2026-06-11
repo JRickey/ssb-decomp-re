@@ -7,6 +7,7 @@
 
 #ifdef PORT
 #include <enhancements/enhancements.h>
+#include "hooks/Events.h"
 extern float port_widescreen_clip_x_scale(void);
 #endif
 
@@ -1227,6 +1228,29 @@ void ftDisplayMainProcDisplay(GObj *fighter_gobj)
         gSPSetGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER | G_SHADE | G_CULL_BACK | G_LIGHTING | G_SHADING_SMOOTH);
         gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_FOG_PRIM_A, G_RM_AA_ZB_OPA_SURF2);
 
+        {
+#ifdef PORT
+        /* override_env_color_ (0x800FC9DC, battle path): mods (e.g. CE's SR
+         * command 0xD9 support) can force the fighter's env color to an RGBA
+         * word instead of the colanim2 / fog / stage-light value. With no
+         * listener the query returns 0 = no override = vanilla path. */
+        u32 sr_env_color;
+        CALL_EVENT(FighterEnvColorQueryEvent, fp->player, 0u);
+        sr_env_color = FighterEnvColorQueryEvent_.rgba;
+        if (sr_env_color != 0u)
+        {
+            gDPSetEnvColor
+            (
+                gSYTaskmanDLHeads[0]++,
+                (u8)((sr_env_color >> 24) & 0xFFu),
+                (u8)((sr_env_color >> 16) & 0xFFu),
+                (u8)((sr_env_color >>  8) & 0xFFu),
+                (u8)( sr_env_color        & 0xFFu)
+            );
+            sFTDisplayMainSkyFogAlpha = (u8)(sr_env_color & 0xFFu);
+        }
+        else
+#endif
         if (fp->colanim.is_use_color2)
         {
             gDPSetEnvColor(gSYTaskmanDLHeads[0]++, fp->colanim.color2.r, fp->colanim.color2.g, fp->colanim.color2.b, fp->colanim.color2.a);
@@ -1244,6 +1268,7 @@ void ftDisplayMainProcDisplay(GObj *fighter_gobj)
             sFTDisplayMainSkyFogAlpha = mpCollisionSetLightColorGetAlpha(gSYTaskmanDLHeads);
         }
         else sFTDisplayMainSkyFogAlpha = scSubsysFighterDrawLightColorGetAlpha(gSYTaskmanDLHeads);
+        }
 
         if (fp->colanim.is_use_color1)
         {

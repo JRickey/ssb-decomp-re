@@ -8,6 +8,12 @@
 
 extern void* func_800269C0_275C0(u16);
 
+#ifdef PORT
+#include <stdlib.h> // abort
+#include "fighter_registry.h"
+extern void port_log(const char *fmt, ...);
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //       INITIALIZED DATA        //
@@ -263,6 +269,37 @@ void mnCongraFuncStart(void)
 	GObj *gobj;
 	SObj *sobj;
 
+#ifdef PORT
+	/* Synth fighters (fkind >= nFTKindEnumCount) index past the 12-entry
+	 * dMNCongraPictures[] table. Route their congra image through the CE
+	 * registry instead. SR's SinglePlayer.set_ending_image only stores the
+	 * BOTTOM file id; TOP is BOTTOM+1 and both halves share offset 0x20718
+	 * (Crash.asm:701, File.asm:2997-2998, SinglePlayer.asm:2293-2333). */
+	MNCongraPicture pic;
+	if (sMNCongraFighterKind >= nFTKindEnumCount)
+	{
+		u32 file_id = (u32)port_fighter_remix_1p_ending_image_file_id(sMNCongraFighterKind);
+		if (file_id == 0)
+		{
+			/* Required asset is missing. Never fall back to the vanilla
+			 * array (would OOB / show Mario). Fail loudly. */
+			port_log("[mncongra] FATAL: synth fkind %d has no registered 1P ending image\n",
+			         sMNCongraFighterKind);
+			abort();
+		}
+		pic.bottom_file_id = file_id;
+		pic.bottom_offset  = 0x20718;
+		pic.top_file_id    = file_id + 1;
+		pic.top_offset     = 0x20718;
+	}
+	else
+	{
+		pic = dMNCongraPictures[sMNCongraFighterKind];
+	}
+#else
+	MNCongraPicture pic = dMNCongraPictures[sMNCongraFighterKind];
+#endif
+
 	sMNCongraSkipWait = 8;
 	sMNCongraSceneChangeWait = 0;
 	sMNCongraIsProceed = FALSE;
@@ -315,17 +352,17 @@ void mnCongraFuncStart(void)
 			Sprite*,
 			lbRelocGetExternHeapFile
 			(
-				dMNCongraPictures[sMNCongraFighterKind].bottom_file_id,
+				pic.bottom_file_id,
 				syTaskmanMalloc
 				(
 					lbRelocGetFileSize
 					(
-						dMNCongraPictures[sMNCongraFighterKind].bottom_file_id
+						pic.bottom_file_id
 					),
 					0x10
 				)
 			),
-			dMNCongraPictures[sMNCongraFighterKind].bottom_offset
+			pic.bottom_offset
 		)
 	);
 	sobj->sprite.attr &= ~SP_FASTCOPY;
@@ -341,17 +378,17 @@ void mnCongraFuncStart(void)
 			Sprite*,
 			lbRelocGetExternHeapFile
 			(
-				dMNCongraPictures[sMNCongraFighterKind].top_file_id,
+				pic.top_file_id,
 				syTaskmanMalloc
 				(
 					lbRelocGetFileSize
 					(
-						dMNCongraPictures[sMNCongraFighterKind].top_file_id
+						pic.top_file_id
 					),
 					0x10
 				)
 			),
-			dMNCongraPictures[sMNCongraFighterKind].top_offset
+			pic.top_offset
 		)
 	);
 	sobj->sprite.attr &= ~SP_FASTCOPY;

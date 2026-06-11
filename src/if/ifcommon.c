@@ -2061,6 +2061,17 @@ void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
     {
         sobj = SObjGetStruct(interface_gobj);
 
+#ifdef PORT
+        /* PORT: defensive null-check for orphaned arrow_gobj. If the
+         * parent item was destroyed but this arrow leaked (the LP64
+         * truncation skip-path in itMainDestroyItem can do that), the
+         * stale ip->item_gobj points at a recycled or empty GObj whose
+         * DObjGetStruct returns NULL. Just skip render for that tic so
+         * the game keeps running. */
+        if (ip->item_gobj == NULL || DObjGetStruct(ip->item_gobj) == NULL) {
+            return;
+        }
+#endif
         pos = DObjGetStruct(ip->item_gobj)->translate.vec.f;
 
         pos.y += ip->coll_data.map_coll.top + 100.0F;

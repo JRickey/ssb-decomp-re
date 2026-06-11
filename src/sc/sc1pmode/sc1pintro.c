@@ -1945,7 +1945,12 @@ void sc1PIntroUpdateAnnounce(void)
         50,
         50
     };
+#ifdef PORT
+    /* synths reach this on bonus/boss stages where tic is unused; clamp the OOB read */
+    u32 tic = announce_wait_tics[(u32)sSC1PIntroPlayerFighterDemoDesc.fkind < ARRAY_COUNT(announce_wait_tics) ? sSC1PIntroPlayerFighterDemoDesc.fkind : 0] + 1;
+#else
     u32 tic = announce_wait_tics[sSC1PIntroPlayerFighterDemoDesc.fkind] + 1;
+#endif
     
     if ((sc1PIntroCheckNotBonusStage(sSC1PIntroStage) != FALSE) && (sSC1PIntroStage != nSC1PGameStageBoss))
     {

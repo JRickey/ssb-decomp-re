@@ -4,6 +4,9 @@
 #include <wp/weapon.h>
 #include <sc/scene.h>
 #include <reloc_data.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 extern void *func_800269C0_275C0(u16 id);
 #ifdef PORT
 /* For the defensive NULL-file_head guard's one-shot warning. */
@@ -2134,6 +2137,35 @@ void efManagerDefaultProcDead(LBTransform *xf)
 void efManagerDefaultProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
+
+#ifdef PORT
+    /* SR-character hit effects spawned from collision-resolve paths
+     * (gmCollisionResolveAttackerWeapon and siblings) can race past the
+     * LBParticleAddTransformForStruct that normally populates
+     * effect_vars.common.xf. The vanilla allocator runs LBParticleProcess-
+     * Struct synchronously and the user_num check rejects the spawn when
+     * xf isn't set, but synth-fkind weapon spawns route through paths
+     * where effect_vars never gets initialized at all (different EFStruct
+     * variant, common is union-overlapped with damage_normal_heavy.size).
+     * The bare-pointer access here AVs on first frame of any synth hit. */
+    if (ep == NULL || ep->effect_vars.common.xf == NULL) return;
+    /* effect_vars is a union that overlays common.xf with several other
+     * variants (damage_normal_heavy.size and friends). For synth-fighter
+     * weapon spawns the union is initialized to a size variant, so xf
+     * dereferences a non-NULL but invalid pointer. The corrupt pointer
+     * pattern observed: high 32 bits leak from an adjacent heap page
+     * address (~0x024F...) and low 32 bits are 0xFFFFFFFF garbage. Reject
+     * anything below the low-userspace threshold, anything with the
+     * low-16 pattern that screams "garbage" (low 16 bits all set, or
+     * misaligned for a struct pointer). Real LBTransform pointers come
+     * from a pool aligned at least to 4 bytes. */
+    {
+        uintptr_t xf_addr = (uintptr_t)ep->effect_vars.common.xf;
+        if (xf_addr < 0x10000u) return;
+        if ((xf_addr & 0xFFFFu) == 0xFFFFu) return;
+        if ((xf_addr & 0x3u) != 0u) return;
+    }
+#endif
 
     ep->effect_vars.common.xf->translate.x += ep->effect_vars.common.vel.x;
     ep->effect_vars.common.xf->translate.y += ep->effect_vars.common.vel.y;
@@ -5462,7 +5494,14 @@ GObj* efManagerYoshiEggLayMakeEffect(GObj *fighter_gobj)
     dobj = DObjGetStruct(effect_gobj);
     dobj->user_data.p = ftGetStruct(fighter_gobj)->joints[nFTPartsJointTopN];
 
+#ifdef PORT
+    {
+        ftCommonYoshiEggDesc *egg_desc = (ftCommonYoshiEggDesc *)port_fighter_yoshi_egg_damage_coll(fp->fkind);
+        dobj->scale.vec.f.x = dobj->scale.vec.f.y = egg_desc->effect_size;
+    }
+#else
     dobj->scale.vec.f.x = dobj->scale.vec.f.y = dFTCommonYoshiEggDamageCollDescs[fp->fkind].effect_size;
+#endif
     dobj->scale.vec.f.z = 1.0F;
 
     dobj->child->child->xobjs[0]->kind = nGCMatrixKindTra;
@@ -5908,18 +5947,19 @@ void efManagerCaptureKirbyStarProcUpdate(GObj *effect_gobj)
 
     if (ep->effect_vars.capture_kirby_star.effect_timer % EFCOMMON_CAPTUREKIRBYSTAR_SPARK_TIMER_MOD)
     {
+        f32 effect_scale = copy[fp->fkind].effect_scale;
         pos = DObjGetStruct(ep->fighter_gobj)->translate.vec.f;
 
-        pos.y += syUtilsRandIntRange(copy[fp->fkind].effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_Y);
+        pos.y += syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_Y);
 
         if (fp->physics.vel_air.x > 0.0F)
         {
-            pos.x -= syUtilsRandIntRange(copy[fp->fkind].effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
+            pos.x -= syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
             efManagerStarRodSparkMakeEffect(&pos, -1);
         }
         else
         {
-            pos.x += syUtilsRandIntRange(copy[fp->fkind].effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
+            pos.x += syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
             efManagerStarRodSparkMakeEffect(&pos, +1);
         }
     }

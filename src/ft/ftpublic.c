@@ -2,6 +2,7 @@
 #include <sc/scene.h>
 #ifdef PORT
 extern void func_80026738_27338(void *arg0);
+#include "fighter_registry.h"
 #endif
 
 extern alSoundEffect* func_800269C0_275C0(u16);
@@ -94,7 +95,11 @@ sb32 ftPublicTryStartCall(GObj *gobj, f32 knockback, s32 player_num)
     {
         return FALSE;
     }
+#ifdef PORT
+    else sFTPublicCallID = (u16)port_fighter_public_call_fgm(ftGetStruct(fighter_gobj)->fkind);
+#else
     else sFTPublicCallID = dFTCommonDataPublicFighterCallFGMs[ftGetStruct(fighter_gobj)->fkind];
+#endif
 
     if (sFTPublicCallID == nSYAudioFGMVoiceEnd)
     {

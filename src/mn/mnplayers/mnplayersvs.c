@@ -12,6 +12,7 @@ extern void func_80026738_27338(void *arg0);
 extern void func_800266A0_272A0(void);
 #ifdef PORT
 extern float port_widescreen_clip_x_scale(void);
+#include "fighter_registry.h"
 #endif
 
 
@@ -109,10 +110,18 @@ s32 sMNPlayersVSReturnTic;
 s32 sMNPlayersVSPad0x8013BDD4[180];
 
 // 0x8013C0A8
-LBFileNode sMNPlayersVSForceStatusBuffer[7];
+/* Bumped from 7 in vanilla. CE-registered synthetic fighters (Crash via
+ * TestCharacterCrash) add per-character anim loads on top of vanilla
+ * preview loads; the small vanilla cap was overflowing once the user
+ * cycled past one synth + a few vanilla previews, tripping the
+ * "Force Status Buffer is full !!" panic loop. */
+LBFileNode sMNPlayersVSForceStatusBuffer[64];
 
 // 0x8013C0E0
-LBFileNode sMNPlayersVSStatusBuffer[120];
+/* Bumped from 120 in vanilla. CE-registered synthetic fighters (Crash)
+ * add file_main + extern-deps loads on top of the 12 vanilla previews;
+ * the original cap was sized to fit only vanilla content. */
+LBFileNode sMNPlayersVSStatusBuffer[256];
 
 // 0x8013C4A0
 void *sMNPlayersVSFiles[ARRAY_COUNT(dMNPlayersVSFileIDs)];
@@ -1699,9 +1708,18 @@ void mnPlayersVSMakeFighter(GObj *fighter_gobj, s32 player, s32 fkind, s32 costu
 
 		DObjGetStruct(fighter_gobj)->rotate.vec.f.y = rot_y;
 
+#ifdef PORT
+		{
+			f32 scale = port_fighter_scale(fkind);
+			DObjGetStruct(fighter_gobj)->scale.vec.f.x = scale;
+			DObjGetStruct(fighter_gobj)->scale.vec.f.y = scale;
+			DObjGetStruct(fighter_gobj)->scale.vec.f.z = scale;
+		}
+#else
 		DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
 		DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
 		DObjGetStruct(fighter_gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
 
 		if (sMNPlayersVSSlots[player].pkind == nFTPlayerKindCom)
 		{
@@ -2647,6 +2665,16 @@ void mnPlayersVSAnnounceFighter(s32 player, s32 slot)
 	func_80026738_27338(sMNPlayersVSSlots[player].p_sfx);
 	func_800269C0_275C0(nSYAudioFGMMarioDash);
 
+#ifdef PORT
+	/* Synth fkinds OOB the 12-wide announce table. CE's AnnounceFighter hook
+	 * plays the synth announcer; this is the backstop when it isn't installed. */
+	if ((u32)sMNPlayersVSSlots[slot].fkind >= ARRAY_COUNT(announce_names))
+	{
+		sMNPlayersVSSlots[player].p_sfx = NULL;
+		return;
+	}
+#endif
+
 	sMNPlayersVSSlots[player].p_sfx = func_800269C0_275C0(announce_names[sMNPlayersVSSlots[slot].fkind]);
 
 	if (sMNPlayersVSSlots[player].p_sfx != NULL)
@@ -3262,7 +3290,8 @@ void mnPlayersVSUpdateCursorNoRecall(GObj *gobj, s32 player)
 // 0x80137EFC
 void mnPlayersVSUpdateCostume(s32 player, s32 select_button)
 {
-	s32 costume = ftParamGetCostumeCommonID(sMNPlayersVSSlots[player].fkind, select_button);
+	s32 costume;
+	costume = ftParamGetCostumeCommonID(sMNPlayersVSSlots[player].fkind, select_button);
 
 	if (mnPlayersVSCheckCostumeUsed(sMNPlayersVSSlots[player].fkind, player, costume) != FALSE)
 	{
@@ -4139,9 +4168,22 @@ void mnPlayersVSSpotlightProcUpdate(GObj *gobj)
 	{
 		gobj->flags = (gobj->flags == GOBJ_FLAG_HIDDEN) ? GOBJ_FLAG_NONE : GOBJ_FLAG_HIDDEN;
 
+#ifdef PORT
+		/* Synth fkinds OOB the 12-wide sizes[] table; read the per-fighter
+		 * registry scale instead (1.5 unless the mod registered one, the
+		 * value every vanilla fighter except DK uses). */
+		{
+			s32 fk = sMNPlayersVSSlots[player].fkind;
+			f32 sz = ((u32)fk < ARRAY_COUNT(sizes)) ? sizes[fk] : port_fighter_css_spotlight_scale(fk);
+			DObjGetStruct(gobj)->scale.vec.f.x = sz;
+			DObjGetStruct(gobj)->scale.vec.f.y = sz;
+			DObjGetStruct(gobj)->scale.vec.f.y = sz;
+		}
+#else
 		DObjGetStruct(gobj)->scale.vec.f.x = sizes[sMNPlayersVSSlots[player].fkind];
 		DObjGetStruct(gobj)->scale.vec.f.y = sizes[sMNPlayersVSSlots[player].fkind];
 		DObjGetStruct(gobj)->scale.vec.f.y = sizes[sMNPlayersVSSlots[player].fkind];
+#endif
 	}
 	else gobj->flags = GOBJ_FLAG_HIDDEN;
 }

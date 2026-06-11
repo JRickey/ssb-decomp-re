@@ -11,6 +11,7 @@ extern alSoundEffect* func_800269C0_275C0(u16);
 
 #ifdef PORT
 extern void *portFixupFTTexturePartContainer(void *container);
+#include "fighter_registry.h"
 #endif
 
 /* Resolve `attr->textureparts_container` (a reloc token under PORT, a real
@@ -542,6 +543,11 @@ void ftParamClearAttackCollAll(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 i;
 
+    /* PORT note: SR end_hitbox_ (0x800E852C) — clearing per-hitbox override
+     * slots is NOT an engine hook: mods that need it (CE) install a funchook
+     * detour on ftParamClearAttackCollAll via mod_install_hook, zero their
+     * own slots, and call the original. */
+
     for (i = 0; i < ARRAY_COUNT(fp->attack_colls); i++)
     {
         FTAttackColl *attack_coll = &fp->attack_colls[i];
@@ -763,7 +769,13 @@ void ftParamResetFighterDamageCollsAll(GObj *fighter_gobj)
         {
             damage_coll->joint_id = damage_coll_desc->joint_id;
             damage_coll->joint = fp->joints[damage_coll->joint_id];
-
+#ifdef PORT
+            port_log("SSB64: ftParamReset damage_coll[%d] fkind=%d joint_id=%d joint=%p user_data=%p\n",
+                i, (int)fp->fkind,
+                damage_coll_desc->joint_id,
+                (void*)damage_coll->joint,
+                damage_coll->joint ? (void*)damage_coll->joint->user_data.p : NULL);
+#endif
             damage_coll->placement = damage_coll_desc->placement;
             damage_coll->is_grabbable = damage_coll_desc->is_grabbable;
 
@@ -826,7 +838,17 @@ void ftParamSetModelPartID(GObj *fighter_gobj, s32 joint_id, s32 modelpart_id)
     commonparts_container = (FTCommonPartContainer*)PORT_RESOLVE(attr->commonparts_container);
     modelparts_container = (FTModelPartContainer*)PORT_RESOLVE(fp->attr->modelparts_container);
     modelpart_status = &fp->modelpart_status[joint_id - nFTPartsJointCommonStart];
+#ifdef PORT
+    /* SR Crash.asm bytecode uses 0xA1000000-style opcodes that decode as
+     * SetModelPartID joint_id=32. Mario's vanilla skeleton has joint 32
+     * allocated so ftGetParts(joint) deref is safe; Crash's skeleton has
+     * NULL at fp->joints[32], so ftGetParts NULL-derefs. The vanilla code
+     * structure does the NULL guard AFTER ftGetParts; move ftGetParts
+     * inside the guard for the synth-fighter case. */
+    parts = (joint != NULL) ? ftGetParts(joint) : NULL;
+#else
     parts = ftGetParts(joint);
+#endif
 
     if (joint != NULL)
     {
@@ -1456,7 +1478,11 @@ sb32 ftParamCheckSetSkeletonColAnimID(GObj *fighter_gobj, s32 damage_level)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    return ftParamCheckSetFighterColAnimID(fighter_gobj, port_fighter_skeleton_col_anim_base(fp->fkind) + damage_level, 0);
+#else
     return ftParamCheckSetFighterColAnimID(fighter_gobj, dFTParamSkeletonColAnimIDs[fp->fkind] + damage_level, 0);
+#endif
 }
 
 // 0x800E9B30 - Set automatic input sequence
@@ -2036,7 +2062,31 @@ void* ftParamMakeEffect(GObj *fighter_gobj, s32 effect_id, s32 joint_id, Vec3f *
             pos.y *= scale;
             pos.z *= scale;
         }
+#ifdef PORT
+        /* Bytecode-driven effect spawns reference fp->joints[joint_id], which
+         * is NULL when the motion script targets a joint slot the current
+         * fighter's skeleton doesn't populate (e.g. SR ports whose effect
+         * commands assume joint indices from a different rig). Skipping the
+         * world-position lookup keeps the engine alive; the effect still
+         * spawns below using the zeroed pos, which is the same fallback
+         * behavior used when joint_id == -1. */
+        if (joint_id >= 0 && joint_id < (s32)ARRAY_COUNT(fp->joints) && fp->joints[joint_id] != NULL)
+        {
+            gmCollisionGetFighterPartsWorldPosition(fp->joints[joint_id], &pos);
+        }
+        else
+        {
+            static s32 s_null_joint_log = 0;
+            if ((s_null_joint_log & 0x1F) == 0)
+            {
+                port_log("SSB64: ftParamMakeEffect joint NULL fkind=%d status=%d effect_id=%d joint_id=%d count=%d\n",
+                    fp->fkind, (s32)fp->status_id, (s32)effect_id, (s32)joint_id, s_null_joint_log);
+            }
+            s_null_joint_log++;
+        }
+#else
         gmCollisionGetFighterPartsWorldPosition(fp->joints[joint_id], &pos);
+#endif
     }
     switch (effect_id)
     {
@@ -2838,19 +2888,31 @@ void func_ovl2_800EBD08(DObj *root_dobj, f32 arg1, Vec3f *vec, f32 arg3)
 // 0x800EC0EC
 s32 ftParamGetCostumeCommonID(s32 fkind, s32 color)
 {
+#ifdef PORT
+    return port_fighter_costume_row(fkind)->royal[color];
+#else
     return dFTParamCostumeIDs[fkind].royal[color];
+#endif
 }
 
 // 0x800EC104
 s32 ftParamGetCostumeTeamID(s32 fkind, s32 color)
 {
+#ifdef PORT
+    return port_fighter_costume_row(fkind)->team[color];
+#else
     return dFTParamCostumeIDs[fkind].team[color];
+#endif
 }
 
 // 0x800EC11C
 s32 ftParamGetCostumeDebug(s32 fkind)
 {
+#ifdef PORT
+    return port_fighter_costume_row(fkind)->develop;
+#else
     return dFTParamCostumeIDs[fkind].develop;
+#endif
 }
 
 // 0x800EC130

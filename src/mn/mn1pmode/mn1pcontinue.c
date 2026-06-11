@@ -7,6 +7,9 @@
 #include <reloc_data.h>
 #include <sys/audio.h>
 extern void *func_800269C0_275C0(u16 id);
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -321,9 +324,16 @@ void func_ovl55_80132094(void)
 // 0x8013209C
 void mnPlayers1PGameContinueSetFighterScale(GObj *gobj, s32 fkind)
 {
+#ifdef PORT
+    f32 scale = port_fighter_scale(fkind);
+    DObjGetStruct(gobj)->scale.vec.f.x = scale;
+    DObjGetStruct(gobj)->scale.vec.f.y = scale;
+    DObjGetStruct(gobj)->scale.vec.f.z = scale;
+#else
     DObjGetStruct(gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
     DObjGetStruct(gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
     DObjGetStruct(gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
 }
 
 // 0x801320D4
@@ -752,9 +762,18 @@ void mnPlayers1PGameContinueGameOverProcUpdate(GObj *gobj)
 
         DObjGetStruct(sMN1PContinueFighterGObj)->translate.vec.f.y += 3.0F;
 
+#ifdef PORT
+        {
+            f32 base_scale = port_fighter_scale(sMN1PContinueFighterDemoDesc.fkind) * sMN1PContinueGameOverFadeOutScale;
+            DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.x = base_scale;
+            DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.y = base_scale;
+            DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.z = base_scale;
+        }
+#else
         DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.x = dSCSubsysFighterScales[sMN1PContinueFighterDemoDesc.fkind] * sMN1PContinueGameOverFadeOutScale;
         DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.y = dSCSubsysFighterScales[sMN1PContinueFighterDemoDesc.fkind] * sMN1PContinueGameOverFadeOutScale;
         DObjGetStruct(sMN1PContinueFighterGObj)->scale.vec.f.z = dSCSubsysFighterScales[sMN1PContinueFighterDemoDesc.fkind] * sMN1PContinueGameOverFadeOutScale;
+#endif
     }
 }
 

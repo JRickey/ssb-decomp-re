@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -145,6 +148,27 @@ void ftKirbySpecialAirNSetStatusSelect(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    /* Synth copy power: copy_id is the inhaled synth's own fkind, OOB for the
+     * vanilla table. SR patches kirby_air_nsp[victim] to the synth's air
+     * neutral-B (Crash -> CrashNSP.air_initial_); run it directly on Kirby. */
+    if (fp->passive_vars.kirby.copy_id >= nFTKindEnumCount)
+    {
+        PortFTSpecialEnterFn h =
+            port_fighter_special_handler(fp->passive_vars.kirby.copy_id, PORT_FIGHTER_SPECIAL_AIR_N);
+        if (h != NULL)
+        {
+            port_kirby_set_copy_special_fkind(fp->passive_vars.kirby.copy_id);
+            h(fighter_gobj);
+            port_kirby_set_copy_special_fkind(-1);
+        }
+        else
+        {
+            ftKirbySpecialAirNStartSetStatus(fighter_gobj);
+        }
+        return;
+    }
+#endif
     dFTKirbySpecialAirNStatusList[fp->passive_vars.kirby.copy_id](fighter_gobj);
 }
 
@@ -162,7 +186,12 @@ sb32 ftCommonSpecialAirCheckInterruptCommon(GObj *fighter_gobj)
             {
                 if (attr->is_have_specialairhi)
                 {
+#ifdef PORT
+                    PortFTSpecialEnterFn h = port_fighter_special_handler(fp->fkind, PORT_FIGHTER_SPECIAL_AIR_HI);
+                    if (h != NULL) h(fighter_gobj);
+#else
                     dFTCommonSpecialAirHiStatusList[fp->fkind](fighter_gobj);
+#endif
 
                     return TRUE;
                 }
@@ -171,7 +200,12 @@ sb32 ftCommonSpecialAirCheckInterruptCommon(GObj *fighter_gobj)
             {
                 if (attr->is_have_specialairlw)
                 {
+#ifdef PORT
+                    PortFTSpecialEnterFn h = port_fighter_special_handler(fp->fkind, PORT_FIGHTER_SPECIAL_AIR_LW);
+                    if (h != NULL) h(fighter_gobj);
+#else
                     dFTCommonSpecialAirLwStatusList[fp->fkind](fighter_gobj);
+#endif
 
                     return TRUE;
                 }
@@ -182,7 +216,14 @@ sb32 ftCommonSpecialAirCheckInterruptCommon(GObj *fighter_gobj)
                 {
                     ftParamSetStickLR(fp);
                 }
+#ifdef PORT
+                {
+                    PortFTSpecialEnterFn h = port_fighter_special_handler(fp->fkind, PORT_FIGHTER_SPECIAL_AIR_N);
+                    if (h != NULL) h(fighter_gobj);
+                }
+#else
                 dFTCommonSpecialAirNStatusList[fp->fkind](fighter_gobj);
+#endif
 
                 return TRUE;
             }

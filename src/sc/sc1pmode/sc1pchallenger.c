@@ -6,6 +6,7 @@
 #ifdef PORT
 #include <sys/audio.h>
 extern void *func_800269C0_275C0(u16 id);
+#include "fighter_registry.h"
 extern float port_widescreen_clip_x_scale(void);
 #endif
 
@@ -259,9 +260,18 @@ void sc1PChallengerMakeFighter(s32 fkind)
     }
 #endif
     
+#ifdef PORT
+    {
+        f32 scale = port_fighter_scale(fkind);
+        DObjGetStruct(fighter_gobj)->scale.vec.f.x = scale;
+        DObjGetStruct(fighter_gobj)->scale.vec.f.y = scale;
+        DObjGetStruct(fighter_gobj)->scale.vec.f.z = scale;
+    }
+#else
     DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
     DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
     DObjGetStruct(fighter_gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
     
     ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterChallenger, 0);
 }

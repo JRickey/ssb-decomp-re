@@ -13,6 +13,7 @@ extern void* func_800269C0_275C0(u16);
 
 #ifdef PORT
 extern float port_widescreen_clip_x_scale(void);
+#include "fighter_registry.h"
 #endif
 
 // // // // // // // // // // // //
@@ -219,6 +220,13 @@ void mnVSResultsSaveBackup(void)
 		{
 			u8 this_fkind = gSCManagerTransferBattleState.players[i].fkind;
 
+#ifdef PORT
+			/* Synth fighters have no slot in the fixed 12-wide record arrays; skip them so a VS match doesn't corrupt the save. */
+			if (this_fkind >= ARRAY_COUNT(gSCManagerBackupData.vs_records))
+			{
+				continue;
+			}
+#endif
 			gSCManagerBackupData.vs_records[this_fkind].time_used += (gSCManagerTransferBattleState.time_passed / UPDATE_INTERVAL);
 
 			if (gSCManagerBackupData.vs_records[this_fkind].time_used > I_MIN_TO_TICS(1000) - 1)
@@ -252,6 +260,13 @@ void mnVSResultsSaveBackup(void)
 				{
 					u8 vs_fkind = gSCManagerTransferBattleState.players[j].fkind;
 
+#ifdef PORT
+					/* Same for a synth opponent: no column in the record matrix. */
+					if (vs_fkind >= ARRAY_COUNT(gSCManagerBackupData.vs_records[0].ko_count))
+					{
+						continue;
+					}
+#endif
 					gSCManagerBackupData.vs_records[this_fkind].ko_count[vs_fkind] += gSCManagerTransferBattleState.players[i].total_kos_players[j];
 
 					if (gSCManagerBackupData.vs_records[this_fkind].ko_count[vs_fkind] > 9999)
@@ -334,7 +349,16 @@ void mnVSResultsAnnounceWinner(void)
 			break;
 			
 		case 210:
+#ifdef PORT
+		{
+			s32 wk = mnVSResultsGetFighterKind(mnVSResultsGetWinPlayer());
+			func_800269C0_275C0((wk >= (s32)nFTKindEnumCount)
+			                    ? (u32)port_fighter_results_announce_fgm(wk)
+			                    : announce_names[wk]);
+		}
+#else
 			func_800269C0_275C0(announce_names[mnVSResultsGetFighterKind(mnVSResultsGetWinPlayer())]);
+#endif
 			break;
 			
 		case 270:
@@ -665,6 +689,35 @@ void mnVSResultsMakeEmblem(void)
 		win_fkind = mnVSResultsGetFighterKind(mnVSResultsGetWinPlayer());
 		color = colors[mnVSResultsGetWinTeam()];
 	}
+#ifdef PORT
+	/* Synth fkinds OOB the 12-entry vanilla tables above. CharacterEngine
+	 * registers each synth's series-logo models into a grown FTEmblemModels
+	 * blob and publishes the resolved DObjDesc/MObjSub/MatAnimJoint pointers
+	 * through port_fighter_results_emblem. Build the spinning emblem from
+	 * those (never a parent's, never an OOB read). Same construction as the
+	 * vanilla path below, just with registry pointers instead of
+	 * lbRelocGetFileData. A synth that registered no emblem draws none. */
+	if (win_fkind >= (s32)nFTKindEnumCount)
+	{
+		void *p_dobj = NULL, *p_mobj = NULL, *p_matanim = NULL;
+		if (port_fighter_results_emblem(win_fkind, &p_dobj, &p_mobj, &p_matanim))
+		{
+			gobj = gcMakeGObjSPAfter(0, NULL, 23, GOBJ_PRIORITY_DEFAULT);
+			gcSetupCommonDObjs(gobj, (DObjDesc *)p_dobj, NULL);
+			gcAddGObjDisplay(gobj, gcDrawDObjTreeForGObj, 33, GOBJ_PRIORITY_DEFAULT, ~0);
+			gcAddMObjAll(gobj, (MObjSub ***)p_mobj);
+			gcAddMatAnimJointAll(gobj, (AObjEvent32 ***)p_matanim, color);
+			gcPlayAnimAll(gobj);
+			gcAddGObjProcess(gobj, mnVSResultsEmblemProcUpdate, nGCProcessKindFunc, 1);
+			DObjGetStruct(gobj)->translate.vec.f.x = 0.0F;
+			DObjGetStruct(gobj)->translate.vec.f.y = 100.0F;
+			DObjGetStruct(gobj)->translate.vec.f.z = -11000.0F;
+			DObjGetStruct(gobj)->scale.vec.f.x = 25.0F;
+			DObjGetStruct(gobj)->scale.vec.f.y = 25.0F;
+		}
+		return;
+	}
+#endif
 	gobj = gcMakeGObjSPAfter(0, NULL, 23, GOBJ_PRIORITY_DEFAULT);
 
 	gcSetupCommonDObjs(gobj, lbRelocGetFileData(DObjDesc*, sMNVSResultsFiles[4], dobjdescs[win_fkind]), NULL);
@@ -979,9 +1032,16 @@ s32 mnVSResultsGetSpot(s32 player)
 // 0x801338EC
 void mnVSResultsSetFighterScale(GObj *fighter_gobj, s32 player, s32 fkind, s32 place)
 {
+#ifdef PORT
+	f32 scale = port_fighter_scale(fkind);
+	DObjGetStruct(fighter_gobj)->scale.vec.f.x = scale;
+	DObjGetStruct(fighter_gobj)->scale.vec.f.y = scale;
+	DObjGetStruct(fighter_gobj)->scale.vec.f.z = scale;
+#else
 	DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
 	DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
 	DObjGetStruct(fighter_gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
 }
 
 // 0x8013392C
@@ -994,6 +1054,21 @@ void mnVSResultsMakeFighter(s32 player)
 	desc.costume = gSCManagerTransferBattleState.players[player].costume;
 	desc.shade = gSCManagerTransferBattleState.players[player].shade;
 	desc.figatree_heap = sMNVSResultsFigatreeHeaps[player];
+#ifdef PORT
+	/* The results screen spawns fresh fighters and does NOT carry the match's
+	 * Kirby copy state (vanilla just clones the default desc). Two x64 hazards
+	 * would otherwise put a stale copy hat on a Kirby winner: the default
+	 * desc.copy_kind isn't sane on x64 (see mvopeningroom.c), and the per-player
+	 * synth pending hat (set when Kirby swallowed a synth like Crash) persists
+	 * past match end. The synth hat's model blob is only loaded in the match
+	 * scene, so re-applying it here AVs in GfxSpVertex. Force a plain Kirby. */
+	desc.copy_kind = nFTKindKirby;
+	port_kirby_set_pending_hat(player, 0);
+	/* Carry the real controller port so CE's alt-model swap (Classic Sonic etc.)
+	 * keys on the winner's per-port flag and the podium model matches the CSS
+	 * choice. Vanilla never reads desc.player at results, so this is inert there. */
+	desc.player = player;
+#endif
 	sMNVSResultsFighterGObjs[player] = ftManagerMakeFighter(&desc);
 }
 
@@ -1034,18 +1109,18 @@ void mnVSResultsSetPlayerTagPosition(GObj *gobj, s32 player)
 	{
 	case 2:
 		SObjGetStruct(gobj)->pos.x = pos_xy_2p[dist][spot].x;
-		SObjGetStruct(gobj)->pos.y = pos_xy_2p[dist][spot].y + pos_y_kinds[mnVSResultsGetFighterKind(player)][dist];
+		SObjGetStruct(gobj)->pos.y = pos_xy_2p[dist][spot].y + (mnVSResultsGetFighterKind(player) >= (s32)nFTKindEnumCount ? 0.0F : pos_y_kinds[mnVSResultsGetFighterKind(player)][dist]);
 		break;
 		
 	case 3:
 		SObjGetStruct(gobj)->pos.x = pos_xy_3p[dist][spot].x;
-		SObjGetStruct(gobj)->pos.y = pos_xy_3p[dist][spot].y + pos_y_kinds[mnVSResultsGetFighterKind(player)][dist];
+		SObjGetStruct(gobj)->pos.y = pos_xy_3p[dist][spot].y + (mnVSResultsGetFighterKind(player) >= (s32)nFTKindEnumCount ? 0.0F : pos_y_kinds[mnVSResultsGetFighterKind(player)][dist]);
 		break;
 		
 	case 4:
 	default:
 		SObjGetStruct(gobj)->pos.x = pos_xy_4p[dist][spot].x;
-		SObjGetStruct(gobj)->pos.y = pos_xy_4p[dist][spot].y + pos_y_kinds[mnVSResultsGetFighterKind(player)][dist];
+		SObjGetStruct(gobj)->pos.y = pos_xy_4p[dist][spot].y + (mnVSResultsGetFighterKind(player) >= (s32)nFTKindEnumCount ? 0.0F : pos_y_kinds[mnVSResultsGetFighterKind(player)][dist]);
 		break;
 	}
 
@@ -1301,10 +1376,21 @@ void mnVSResultsMakeWinnerText(s32 winner)
 	}
 	if (sMNVSResultsIsTeamBattle == FALSE)
 	{
+#ifdef PORT
+		f32 wlx = (winner >= (s32)nFTKindEnumCount)
+		          ? port_fighter_results_wins_lx(winner)
+		          : x_fkinds[winner];
+#if defined(REGION_US)
+		mnVSResultsMakeString(wins, wlx, 180.0F, 3, 1.0F);
+#else
+		mnVSResultsMakeString(win, wlx, 180.0F, 3, 1.0F);
+#endif
+#else
 #if defined(REGION_US)
 		mnVSResultsMakeString(wins, x_fkinds[winner], 180.0F, 3, 1.0F);
 #else
 		mnVSResultsMakeString(win, x_fkinds[winner], 180.0F, 3, 1.0F);
+#endif
 #endif
 	}
 }
@@ -1395,6 +1481,15 @@ void mnVSResultMakeFighterName(void)
 	
 	fkind = mnVSResultGetWinFighterKind();
 
+#ifdef PORT
+	if (fkind >= (s32)nFTKindEnumCount) {
+		const char *nm = port_fighter_results_name(fkind);
+		if (nm != NULL) {
+			mnVSResultsMakeString((char *)nm, port_fighter_results_name_lx(fkind),
+			                      180.0F, 0, port_fighter_results_name_scale(fkind));
+		}
+	} else
+#endif
 	mnVSResultsMakeString(names[fkind], pos_x[fkind], 180.0F, 0, scales[fkind]);
 	mnVSResultsMakeWinnerText(fkind);
 }

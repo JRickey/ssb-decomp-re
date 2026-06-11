@@ -6,6 +6,7 @@
 #include <reloc_data.h>
 #ifdef PORT
 #include <sys/audio.h>
+#include "fighter_registry.h"
 #endif
 
 
@@ -1793,9 +1794,16 @@ void mnCharactersMakeWorks(s32 fkind)
 // 0x80132494
 void mnCharactersSetFighterScale(GObj *fighter_gobj, s32 fkind)
 {
+#ifdef PORT
+	f32 scale = port_fighter_scale(fkind);
+	DObjGetStruct(fighter_gobj)->scale.vec.f.x = scale;
+	DObjGetStruct(fighter_gobj)->scale.vec.f.y = scale;
+	DObjGetStruct(fighter_gobj)->scale.vec.f.z = scale;
+#else
 	DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
 	DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
 	DObjGetStruct(fighter_gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
 }
 
 // 0x801324CC

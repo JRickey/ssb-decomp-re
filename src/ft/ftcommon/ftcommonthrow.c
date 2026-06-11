@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 
+#ifdef PORT
+extern void port_log(const char *fmt, ...);
+#endif
+
 extern void ftParamSetCaptureImmuneMask(FTStruct*, u8);
 
 // // // // // // // // // // // //
@@ -23,14 +27,31 @@ void ftCommonThrowProcUpdate(GObj *fighter_gobj)
     }
     if (fp->motion_vars.flags.flag2 != 0)
     {
-        ftCommonThrownProcPhysics(fp->catch_gobj);
-        ftCommonThrownReleaseThrownUpdateStats(fp->catch_gobj, (fp->motion_vars.flags.flag2 == 1) ? -fp->lr : fp->lr, (fp->status_id == nFTCommonStatusThrowB) ? 1 : 0, TRUE);
+#ifdef PORT
+        /* If the throw bytecode's "release victim" event fires after the
+         * victim's catch_gobj already cleared (e.g., target died mid-throw
+         * or grab broke abnormally), ftGetStruct(NULL) downstream NULL-
+         * derefs at +0x14. Log + clear flag + bail so the thrower
+         * recovers via the anim-end branch below. */
+        if (fp->catch_gobj == NULL)
+        {
+            port_log("SSB64: ftCommonThrowProcUpdate flag2 set but catch_gobj=NULL fkind=%d status_id=0x%x - skipping release\n",
+                     (int)fp->fkind, (int)fp->status_id);
+            fp->motion_vars.flags.flag2 = 0;
+            ftParamSetCaptureImmuneMask(fp, FTCATCHKIND_MASK_NONE);
+        }
+        else
+#endif
+        {
+            ftCommonThrownProcPhysics(fp->catch_gobj);
+            ftCommonThrownReleaseThrownUpdateStats(fp->catch_gobj, (fp->motion_vars.flags.flag2 == 1) ? -fp->lr : fp->lr, (fp->status_id == nFTCommonStatusThrowB) ? 1 : 0, TRUE);
 
-        fp->motion_vars.flags.flag2 = 0;
+            fp->motion_vars.flags.flag2 = 0;
 
-        fp->catch_gobj = NULL;
+            fp->catch_gobj = NULL;
 
-        ftParamSetCaptureImmuneMask(fp, FTCATCHKIND_MASK_NONE);
+            ftParamSetCaptureImmuneMask(fp, FTCATCHKIND_MASK_NONE);
+        }
     }
     if (fighter_gobj->anim_frame <= 0.0F)
     {
@@ -60,6 +81,17 @@ void ftCommonThrowSetStatus(GObj *fighter_gobj, sb32 is_throwf)
     catch_gobj = this_fp->catch_gobj;
     catch_fp = ftGetStruct(catch_gobj);
 
+#ifdef PORT
+    /* The thrower's thrown_status[] table is indexed by the VICTIM's fkind but
+     * sized for vanilla fkinds only; a synth victim (Crash/Banjo, fkind past
+     * nFTKindEnumCount) reads OOB -> garbage thrown status -> bad figatree ->
+     * crash when thrown. Clamp a synth victim to a normal vanilla index: a
+     * normal victim's thrown reaction is the COMMON thrown statuses, which the
+     * synth plays with its OWN thrown figatrees (no parent visuals). */
+    s32 catch_vk = ((s32)catch_fp->fkind >= (s32)nFTKindEnumCount)
+                   ? (s32)nFTKindMario : (s32)catch_fp->fkind;
+#endif
+
     if ((is_throwf != FALSE) || ((this_fp->input.pl.stick_range.x * this_fp->lr) >= 0))
     {
         if ((this_fp->fkind == nFTKindKirby) || (this_fp->fkind == nFTKindNKirby))
@@ -70,7 +102,7 @@ void ftCommonThrowSetStatus(GObj *fighter_gobj, sb32 is_throwf)
         }
         else status_id = nFTCommonStatusThrowF;
 #ifdef PORT
-        thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_fp->fkind].ft_thrown[0];
+        thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_vk].ft_thrown[0];
 #else
         thrown_status = &this_fp->attr->thrown_status[catch_fp->fkind].ft_thrown[0];
 #endif
@@ -79,7 +111,7 @@ void ftCommonThrowSetStatus(GObj *fighter_gobj, sb32 is_throwf)
     {
         status_id = nFTCommonStatusThrowB;
 #ifdef PORT
-        thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_fp->fkind].ft_thrown[1];
+        thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_vk].ft_thrown[1];
 #else
         thrown_status = &this_fp->attr->thrown_status[catch_fp->fkind].ft_thrown[1];
 #endif

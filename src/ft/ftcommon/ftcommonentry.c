@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <gr/ground.h>
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -115,7 +118,17 @@ void ftCommonAppearProcUpdate(GObj *fighter_gobj)
 
     ftCommonAppearUpdateEffects(fighter_gobj);
 
+#ifdef PORT
+    /* Anti-soft-lock backstop for async SR appear figatrees: normally the
+     * appear ends when anim_frame returns to the End sentinel (<= 0), but if a
+     * body joint ever fails to terminate, anim_frame climbs without bound and
+     * the fighter hovers off-screen forever. Vanilla/synth appears are short
+     * (~tens to ~175 frames); a 1000-frame ceiling forces the transition on a
+     * runaway while never tripping a legitimate appear. */
+    if (fighter_gobj->anim_frame <= 0.0F || fighter_gobj->anim_frame > 1000.0F)
+#else
     if (fighter_gobj->anim_frame <= 0.0F)
+#endif
     {
         fp->lr = fp->status_vars.common.entry.lr;
 
@@ -137,6 +150,12 @@ void ftCommonAppearProcPhysics(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     DObj *topn_joint = fp->joints[nFTPartsJointTopN];
     DObj *transn_joint = fp->joints[nFTPartsJointTransN];
+
+#ifdef PORT
+    if (topn_joint == NULL || transn_joint == NULL) {
+        return;
+    }
+#endif
 
     topn_joint->translate.vec.f.y = fp->entry_pos.y + transn_joint->translate.vec.f.y;
 
@@ -173,7 +192,9 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 status_id;
     s32 entry_id;
+#ifndef PORT
     GObj *boss_target_gobj;
+#endif
 
     entry_id = (fp->lr == +1) ? 0 : 1;
 
@@ -187,6 +208,10 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
 
     fp->status_vars.common.entry.floor_line_id = fp->coll_data.floor_line_id;
 
+#ifdef PORT
+    status_id = port_fighter_entry_appear(fp->fkind, entry_id);
+    port_fighter_entry_make_effect(fp->fkind, fp);
+#else
     status_id = dFTCommonEntryAppearStatusIDs[fp->fkind][entry_id];
 
     switch (fp->fkind)
@@ -241,7 +266,7 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
 
         while (boss_target_gobj != NULL)
         {
-            if (boss_target_gobj != fighter_gobj) 
+            if (boss_target_gobj != fighter_gobj)
             {
                 break; // This assumes Master Hand has found its target, since it is not his own object
             }
@@ -251,6 +276,7 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
 
         break;
     }
+#endif
     mpCommonSetFighterAir(fp);
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftCommonAppearInitStatusVars(fighter_gobj);

@@ -865,7 +865,17 @@ void lbCommonAddDObjAnimJointAll(DObj *root_dobj, AObjEvent32 **anim_joints, f32
 void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_frame)
 {
     DObj *current_dobj = root_dobj;
-    
+#ifdef PORT
+    void **figatree_start = figatree;
+    s32 joints_walked = 0;
+    s32 joints_bound  = 0;
+    s32 figatree_fkind = -1;
+    {
+        FTStruct *fp = ftGetStruct(root_dobj->parent_gobj);
+        figatree_fkind = (fp != NULL) ? (s32)fp->fkind : -1;
+    }
+#endif
+
     root_dobj->parent_gobj->anim_frame = anim_frame;
 
     while (current_dobj != NULL)
@@ -873,16 +883,20 @@ void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_
 #ifdef PORT
         u32 anim_token = *(u32*)figatree;
         void *anim = (anim_token != 0) ? PORT_RESOLVE(anim_token) : NULL;
+        joints_walked++;
 #else
         void *anim = *figatree;
 #endif
         FTParts *parts = current_dobj->user_data.p;
-        
+
         if (anim != NULL)
         {
             gcAddDObjAnimJoint(current_dobj, anim, anim_frame);
 
             parts->is_have_anim = TRUE;
+#ifdef PORT
+            joints_bound++;
+#endif
         }
         else
         {
@@ -895,9 +909,25 @@ void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_
 #else
         figatree++;
 #endif
-        
+
         current_dobj = lbCommonGetTreeDObjNextFromRoot(current_dobj, root_dobj);
     }
+
+#ifdef PORT
+    /* Diagnostic: prints joint count walked vs anim-joints bound. For
+     * vanilla characters bind == walked (figatree has data for every
+     * joint). For synth characters whose figatree was extracted with the
+     * wrong byte layout / wrong joint count, the numbers diverge. Also
+     * dumps the first 8 figatree words for byte-order sanity. */
+    {
+        u32 *fw = (u32 *)figatree_start;
+        port_log("SSB64: figatree-bind fkind=%d walked=%d bound=%d root=%p"
+                 " frame=%.2f bytes[0..7]=%08X %08X %08X %08X %08X %08X %08X %08X\n",
+                 (int)figatree_fkind, (int)joints_walked, (int)joints_bound,
+                 (void *)root_dobj, (double)anim_frame,
+                 fw[0], fw[1], fw[2], fw[3], fw[4], fw[5], fw[6], fw[7]);
+    }
+#endif
 }
 
 // 0x800C88AC
@@ -1486,11 +1516,36 @@ void lbCommonPlayTranslateScaledDObjAnim(DObj *dobj, Vec3f *scale)
                         {
                             interp = 1.0F;
                         }
+#ifdef PORT
+                        /* Skip the cubic-spline interpolation when the
+                         * AObj has no SYInterpDesc attached. In vanilla
+                         * N64 this branch was never hit -- figatree
+                         * streams always emit a SetInterp (opcode 13)
+                         * before any TraI command -- but in the port
+                         * synth-fighter / cross-character CSS spawn
+                         * sequences sometimes leave aobj->interpolate
+                         * at 0 (the slot wasn't tokenized by the chain
+                         * walk for that specific stream). syInterpCubic
+                         * then deref-crashes on a NULL desc. Skipping
+                         * the call leaves dobj->translate at whatever
+                         * the default-pose / previous-frame value was
+                         * -- visible as a frozen joint instead of a
+                         * SIGSEGV. */
+                        if (aobj->interpolate != NULL)
+                        {
+                            syInterpCubic(&dobj->translate.vec.f, aobj->interpolate, interp);
+
+                            dobj->translate.vec.f.x *= scale->x;
+                            dobj->translate.vec.f.y *= scale->y;
+                            dobj->translate.vec.f.z *= scale->z;
+                        }
+#else
                         syInterpCubic(&dobj->translate.vec.f, aobj->interpolate, interp);
 
                         dobj->translate.vec.f.x *= scale->x;
                         dobj->translate.vec.f.y *= scale->y;
                         dobj->translate.vec.f.z *= scale->z;
+#endif
                         break;
 
                     case nGCAnimTrackTraX:

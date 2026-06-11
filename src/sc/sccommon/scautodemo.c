@@ -572,7 +572,22 @@ void scAutoDemoInitDemo(void)
 	{
 		gSCManagerSceneData.demo_gkind_order = 0;
 	}
+#ifdef PORT
+	/* CE's title demo hook can put synth fkinds in demo_fkind; they're never
+	 * in the u16 mask and a shift by >= 32 is UB */
+	sSCAutoDemoFighterMask = 0;
+
+	if (gSCManagerSceneData.demo_fkind[0] < GMCOMMON_FIGHTERS_PLAYABLE_NUM)
+	{
+		sSCAutoDemoFighterMask |= (1 << gSCManagerSceneData.demo_fkind[0]);
+	}
+	if (gSCManagerSceneData.demo_fkind[1] < GMCOMMON_FIGHTERS_PLAYABLE_NUM)
+	{
+		sSCAutoDemoFighterMask |= (1 << gSCManagerSceneData.demo_fkind[1]);
+	}
+#else
 	sSCAutoDemoFighterMask = (1 << gSCManagerSceneData.demo_fkind[0]) | (1 << gSCManagerSceneData.demo_fkind[1]);
+#endif
 
 	for (i = 0; i < ARRAY_COUNT(gSCManagerBattleState->players); i++)
 	{

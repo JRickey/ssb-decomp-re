@@ -1763,6 +1763,12 @@ sb32 gmCollisionCheckItemAttackFighterDamageCollide(ITAttackColl *attack_coll, s
     FTParts *parts;
     DObj *dobj;
 
+#ifdef PORT
+    port_log("SSB64: gmCollItemFighterDmg damage_coll=%p joint=%p joint_id=%d\n",
+        (void*)damage_coll,
+        damage_coll ? (void*)damage_coll->joint : NULL,
+        damage_coll ? (int)damage_coll->joint_id : -999);
+#endif
     dobj = damage_coll->joint;
     parts = ftGetParts(dobj);
 

@@ -77,30 +77,61 @@ void lbBackupApplyOptions(void)
     );
 }
 
+#ifdef PORT
+/* synth fkinds (>= 32 with enough mods) make the unlock-mask shift UB, and a
+ * synth is never in the u16 mask anyway; treat anything past the vanilla
+ * playables as not locked so synth selections survive uncorrected */
+static sb32 lbBackupFighterIsLocked(u32 fkind)
+{
+    return (fkind < GMCOMMON_FIGHTERS_PLAYABLE_NUM) &&
+           !((gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & (1 << fkind));
+}
+#endif
+
 // 0x800D473C
 void lbBackupCorrectErrors(void)
 {
     s32 i;
 
+#ifdef PORT
+    if (lbBackupFighterIsLocked(gSCManagerBackupData.characters_fkind))
+#else
     if (!((gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & (1 << gSCManagerBackupData.characters_fkind)))
+#endif
     {
         gSCManagerBackupData.characters_fkind = dSCManagerDefaultBackupData.characters_fkind;
     }
+#ifdef PORT
+    if (lbBackupFighterIsLocked(gSCManagerSceneData.fkind))
+#else
     if (!((gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & (1 << gSCManagerSceneData.fkind)))
+#endif
     {
         gSCManagerSceneData.fkind = nFTKindNull;
     }
+#ifdef PORT
+    if (lbBackupFighterIsLocked(gSCManagerSceneData.training_man_fkind))
+#else
     if (!((gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & (1 << gSCManagerSceneData.training_man_fkind)))
+#endif
     {
         gSCManagerSceneData.training_man_fkind = nFTKindNull;
     }
+#ifdef PORT
+    if (lbBackupFighterIsLocked(gSCManagerSceneData.training_com_fkind))
+#else
     if (!((gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & (1 << gSCManagerSceneData.training_com_fkind)))
+#endif
     {
         gSCManagerSceneData.training_com_fkind = nFTKindNull;
     }
     for (i = 0; i < ARRAY_COUNT(gSCManagerTransferBattleState.players); i++)
     {
+#ifdef PORT
+        if (lbBackupFighterIsLocked(gSCManagerTransferBattleState.players[i].fkind))
+#else
         if (!((1 << gSCManagerTransferBattleState.players[i].fkind) & (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER)))
+#endif
         {
             gSCManagerTransferBattleState.players[i].fkind = nFTKindNull;
             gSCManagerTransferBattleState.players[i].pkind = nFTPlayerKindMan;

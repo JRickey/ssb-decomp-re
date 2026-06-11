@@ -8,6 +8,9 @@
 #include <sys/audio.h>
 extern void *func_800269C0_275C0(u16 id);
 extern void func_80026738_27338(void *arg0);
+#ifdef PORT
+#include "fighter_registry.h"
+#endif
 extern void func_800266A0_272A0(void);
 #ifdef PORT
 extern float port_widescreen_clip_x_scale(void);
@@ -115,7 +118,13 @@ s32 sMNPlayers1PBonusPad0x80137730[180];
 LBFileNode sMNPlayers1PBonusForceStatusBuffer[7];
 
 // 0x80137A38
+#ifdef PORT
+/* PORT: 120 overflows loading a synth fighter's full file set in the 1P preview
+ * (lbRelocAddStatusBufferFile "Status Buffer is full" abort); VS uses 256. */
+LBFileNode sMNPlayers1PBonusStatusBuffer[256];
+#else
 LBFileNode sMNPlayers1PBonusStatusBuffer[120];
+#endif
 
 // 0x80137DF8
 void *sMNPlayers1PBonusFiles[ARRAY_COUNT(dMNPlayers1PBonusFileIDs)];
@@ -446,6 +455,14 @@ s32 mnPlayers1PBonusGetPortrait(s32 fkind)
 		7, 5, 8, 10, 11, 6
 	};
 
+#ifdef PORT
+	/* Same OOB guard as mnPlayersVSGetPortrait: an unselected/transitioning slot can
+	   hand us a non-playable fkind past the 12-entry portraits[]. Clamp to slot 0. */
+	if ((u32)fkind >= ARRAY_COUNT(portraits))
+	{
+		return 0;
+	}
+#endif
 	return portraits[fkind];
 }
 
@@ -1388,9 +1405,18 @@ void mnPlayers1PBonusMakeFighter(GObj *fighter_gobj, s32 player, s32 fkind)
 
 		DObjGetStruct(fighter_gobj)->rotate.vec.f.y = rot_y;
 
+#ifdef PORT
+		{
+			f32 scale = port_fighter_scale(fkind);
+			DObjGetStruct(fighter_gobj)->scale.vec.f.x = scale;
+			DObjGetStruct(fighter_gobj)->scale.vec.f.y = scale;
+			DObjGetStruct(fighter_gobj)->scale.vec.f.z = scale;
+		}
+#else
 		DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
 		DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];
 		DObjGetStruct(fighter_gobj)->scale.vec.f.z = dSCSubsysFighterScales[fkind];
+#endif
 	}
 }
 
@@ -1722,6 +1748,16 @@ void mnPlayers1PBonusAnnounceFighter(s32 player, s32 slot)
 		}
 	}
 	func_800269C0_275C0(nSYAudioFGMMarioDash);
+
+#ifdef PORT
+	/* Synth fkinds OOB the 12-wide announce table. CE's AnnounceFighter hook
+	 * plays the synth announcer; this is the backstop when it isn't installed. */
+	if ((u32)sMNPlayers1PBonusSlot.fkind >= ARRAY_COUNT(announce_names))
+	{
+		sMNPlayers1PBonusSlot.p_sfx = NULL;
+		return;
+	}
+#endif
 
 	sMNPlayers1PBonusSlot.p_sfx = func_800269C0_275C0(announce_names[sMNPlayers1PBonusSlot.fkind]);
 
@@ -2587,9 +2623,22 @@ void mnPlayers1PBonusSpotlightProcUpdate(GObj *gobj)
 	{
 		gobj->flags = (gobj->flags == GOBJ_FLAG_HIDDEN) ? GOBJ_FLAG_NONE : GOBJ_FLAG_HIDDEN;
 
+#ifdef PORT
+		/* Synth fkinds OOB the 12-wide sizes[] table; read the per-fighter
+		 * registry scale instead (1.5 unless the mod registered one, the
+		 * value every vanilla fighter except DK uses). */
+		{
+			s32 fk = sMNPlayers1PBonusSlot.fkind;
+			f32 sz = ((u32)fk < ARRAY_COUNT(sizes)) ? sizes[fk] : port_fighter_css_spotlight_scale(fk);
+			DObjGetStruct(gobj)->scale.vec.f.x = sz;
+			DObjGetStruct(gobj)->scale.vec.f.y = sz;
+			DObjGetStruct(gobj)->scale.vec.f.y = sz;
+		}
+#else
 		DObjGetStruct(gobj)->scale.vec.f.x = sizes[sMNPlayers1PBonusSlot.fkind];
 		DObjGetStruct(gobj)->scale.vec.f.y = sizes[sMNPlayers1PBonusSlot.fkind];
 		DObjGetStruct(gobj)->scale.vec.f.y = sizes[sMNPlayers1PBonusSlot.fkind];
+#endif
 	}
 	else gobj->flags = GOBJ_FLAG_HIDDEN;
 }

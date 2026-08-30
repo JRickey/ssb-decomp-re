@@ -14,6 +14,9 @@ extern void abort(void) __attribute__((noreturn));
 #endif
 extern void *malloc(size_t size);
 extern void free(void *ptr);
+extern void *realloc(void *ptr, size_t size);
+extern char *getenv(const char *name);
+extern unsigned long strtoul(const char *str, char **endptr, int base);
 #endif
 
 typedef struct lldiv_t

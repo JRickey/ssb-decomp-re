@@ -21,6 +21,7 @@ extern void port_coroutine_yield(void);
 #include <sys/controller.h>
 #include <sys/netpeer.h>
 #include <sys/netreplay.h>
+#include <sys/netsync.h>
 #ifdef PORT
 #include <gr/ground.h>
 #include <sys/objman.h>
@@ -957,6 +958,7 @@ void scManagerRunLoop(sb32 arg)
 			port_log("SSB64: SSB64_COOP_P2 override → P2 port=%d fkind=%d\n",
 			         (int)gSCManagerSceneData.coop_player2, (int)gSCManagerSceneData.coop_fkind2);
 		}
+		syNetSyncInitDebugEnv();
 		syNetReplayInitDebugEnv();
 		syNetPeerInitDebugEnv();
 	}

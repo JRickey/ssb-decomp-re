@@ -177,7 +177,10 @@ struct WPAttackColl
 // Main weapon struct
 struct WPStruct
 {
-    WPStruct *next;                     // Memory region allocated for next WPStruct
+    WPStruct *next;
+#ifdef PORT
+    u32 spawn_serial;               // Per-match creation serial (state trace identity; gobj->id is only the kind)
+#endif                     // Memory region allocated for next WPStruct
     GObj *weapon_gobj;                  // Weapon's GObj pointer
     GObj *owner_gobj;                   // Weapon's owner
     s32 kind;                           // Weapon ID

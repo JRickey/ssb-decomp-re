@@ -72,7 +72,6 @@ extern void syNetInputSetSavedInput(s32 player, u32 tick, u16 buttons, s8 stick_
 extern sb32 syNetInputGetHistoryFrame(s32 player, u32 tick, SYNetInputFrame *out_frame);
 extern sb32 syNetInputGetPublishedFrame(s32 player, SYNetInputFrame *out_frame);
 extern u32 syNetInputGetHistoryChecksum(s32 player, u32 tick_begin, u32 frame_count);
-extern u32 syNetInputGetHistoryInputChecksum(u32 frame_count);
 extern u32 syNetInputGetHistoryInputValueChecksumForPlayer(s32 player, u32 tick_begin, u32 frame_count);
 extern void syNetInputGetHistoryInputValueChecksumWindow(u32 tick_begin, u32 frame_count, u32 *out_checksums,
                                                        u32 *out_combined_checksum);
@@ -83,6 +82,9 @@ extern void syNetInputClearReplayFrames(void);
 extern sb32 syNetInputSetReplayFrame(s32 player, u32 tick, const SYNetInputFrame *frame);
 extern sb32 syNetInputGetReplayFrame(s32 player, u32 tick, SYNetInputFrame *out_frame);
 extern u32 syNetInputGetReplayInputChecksum(void);
+extern void syNetInputSetPublishedChecksumLimit(u32 tick_limit);
+extern u32 syNetInputGetPublishedTickCount(void);
+extern u32 syNetInputGetPublishedInputChecksum(void);
 extern void syNetInputSetReplayMetadata(const SYNetInputReplayMetadata *metadata);
 extern sb32 syNetInputGetReplayMetadata(SYNetInputReplayMetadata *out_metadata);
 extern void syNetInputFuncRead(void);

@@ -1,4 +1,5 @@
 #include <wp/weapon.h>
+#include <sys/netsync.h>
 #include <it/item.h>
 #include <ft/fighter.h>
 
@@ -114,6 +115,9 @@ GObj* wpManagerMakeWeapon(GObj *parent_gobj, WPDesc *wp_desc, Vec3f *spawn_pos, 
         wpManagerSetPrevStructAlloc(wp);
         return NULL;
     }
+#ifdef PORT
+    wp->spawn_serial = syNetSyncNextSpawnSerial();
+#endif
     attr = lbRelocGetFileData(WPAttributes*, *wp_desc->p_weapon, wp_desc->o_attributes); // I hope this is correct?
 #ifdef PORT
     portFixupStructU16(attr, 0x10, 6); // Rotate16 u16 fields: Vec3h[2] + s16[4] + u16 + pad

@@ -1,4 +1,5 @@
 #include <sys/netreplay.h>
+#include <sys/netsync.h>
 
 #include <ft/fighter.h>
 #include <if/ifcommon.h>
@@ -12,6 +13,7 @@
 
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
+extern void port_exit_process(int code);
 extern char *getenv(const char *name);
 extern int atoi(const char *s);
 #endif
@@ -40,6 +42,9 @@ sb32 sSYNetReplayIsRecordWritten;
 sb32 sSYNetReplayIsPlaybackLoaded;
 sb32 sSYNetReplayIsPlaybackActive;
 sb32 sSYNetReplayIsPlaybackVerified;
+/* SSB64_RIG_EXIT=1: turn the playback verify verdict into the process exit
+ * code (0 PASS, 1 FAIL, 2 playback ended before the replay did). */
+sb32 sSYNetReplayRigExit;
 SYNetInputReplayMetadata sSYNetReplayLoadedMetadata;
 SYNetInputFrame sSYNetReplayLoadedFrames[MAXCONTROLLERS][SYNETINPUT_REPLAY_MAX_FRAMES];
 
@@ -162,6 +167,11 @@ void syNetReplayInitDebugEnv(void)
 	sSYNetReplayRecordPath = getenv("SSB64_REPLAY_RECORD");
 	sSYNetReplayPlayPath = getenv("SSB64_REPLAY_PLAY");
 	frame_limit_env = getenv("SSB64_REPLAY_RECORD_FRAMES");
+	{
+		const char *rig_exit_env = getenv("SSB64_RIG_EXIT");
+
+		sSYNetReplayRigExit = ((rig_exit_env != NULL) && (atoi(rig_exit_env) != 0)) ? TRUE : FALSE;
+	}
 
 	if (frame_limit_env != NULL)
 	{
@@ -180,6 +190,19 @@ void syNetReplayInitDebugEnv(void)
 			syUtilsSetRandomSeed(sSYNetReplayLoadedMetadata.rng_seed);
 			gSCManagerSceneData.scene_prev = nSCKindVSMode;
 			gSCManagerSceneData.scene_curr = nSCKindVSBattle;
+		}
+		else
+		{
+			/* Nothing will arm playback now, so no verdict can ever be produced;
+			 * without this a batch run would sit at the title screen forever. */
+			port_log("SSB64 Replay: playback load failed path=%s result=LOADFAIL\n", sSYNetReplayPlayPath);
+
+			if (sSYNetReplayRigExit != FALSE)
+			{
+				port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", 3);
+				syNetSyncFinishVSSession();
+				port_exit_process(3);
+			}
 		}
 	}
 #endif
@@ -210,6 +233,7 @@ void syNetReplayStartVSSession(SCBattleState *battle_state)
 		}
 		sSYNetReplayIsPlaybackActive = TRUE;
 		sSYNetReplayIsPlaybackVerified = FALSE;
+		syNetInputSetPublishedChecksumLimit(sSYNetReplayLoadedFrameCount);
 
 #ifdef PORT
 		port_log("SSB64 Replay: playback start path=%s frames=%u checksum=0x%08X stage=%u seed=%u\n",
@@ -243,22 +267,95 @@ void syNetReplayUpdate(void)
 		syNetReplayFinishVSSession();
 	}
 	if ((sSYNetReplayIsPlaybackActive != FALSE) && (sSYNetReplayIsPlaybackVerified == FALSE) &&
-		(syNetInputGetTick() >= sSYNetReplayLoadedFrameCount))
+		(syNetInputGetPublishedTickCount() >= sSYNetReplayLoadedFrameCount))
 	{
-		u32 checksum = syNetInputGetHistoryInputChecksum(sSYNetReplayLoadedFrameCount);
+		/* netinput froze the published-input checksum at exactly frame_count
+		 * advanced ticks (see syNetInputSetPublishedChecksumLimit), so this
+		 * compares the same tick range the recorder hashed. */
+		u32 checksum = syNetInputGetPublishedInputChecksum();
+		sb32 is_pass = (checksum == sSYNetReplayLoadedInputChecksum) ? TRUE : FALSE;
 
 #ifdef PORT
 		port_log("SSB64 Replay: playback verify frames=%u expected=0x%08X actual=0x%08X result=%s\n",
 		         sSYNetReplayLoadedFrameCount, sSYNetReplayLoadedInputChecksum, checksum,
-		         (checksum == sSYNetReplayLoadedInputChecksum) ? "PASS" : "FAIL");
+		         (is_pass != FALSE) ? "PASS" : "FAIL");
 #endif
 		sSYNetReplayIsPlaybackVerified = TRUE;
 		sSYNetReplayIsPlaybackActive = FALSE;
+
+#ifdef PORT
+		if (sSYNetReplayRigExit != FALSE)
+		{
+			/* Batch/rig mode: report through the exit code. port_exit_process()
+			 * terminates immediately - normal teardown from the game coroutine
+			 * is not safe (render/audio threads are mid-frame). Inputs that
+			 * replayed identically but a gameplay state trace that diverged
+			 * (SSB64_SYNC_VERIFY) is its own code: the sim is nondeterministic. */
+			s32 exit_code = (is_pass != FALSE) ? 0 : 1;
+
+			if (is_pass != FALSE)
+			{
+				switch (syNetSyncGetVerifyResult())
+				{
+				case nSYNetSyncVerifyNotLoaded:
+					/* an absent oracle must never read as PASS */
+					port_log("SSB64 Replay: inputs PASS but the state trace to verify against did not load result=LOADFAIL\n");
+					exit_code = 3;
+					break;
+				case nSYNetSyncVerifyDiverged:
+					port_log("SSB64 Replay: inputs PASS but state trace diverged result=DESYNC\n");
+					exit_code = 4;
+					break;
+				case nSYNetSyncVerifyShort:
+					port_log("SSB64 Replay: inputs PASS but the state trace ended before the replay did result=DESYNC\n");
+					exit_code = 4;
+					break;
+				default:
+					break;
+				}
+			}
+			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", exit_code);
+			syNetSyncFinishVSSession();
+			port_exit_process(exit_code);
+		}
+#endif
 	}
 }
 
 void syNetReplayFinishVSSession(void)
 {
+	if ((sSYNetReplayIsPlaybackActive != FALSE) && (sSYNetReplayIsPlaybackVerified == FALSE))
+	{
+		/* The match ended before the replay stream did (stocks/time ran out
+		 * earlier than the recording expected), so there is nothing to verify
+		 * against - report it rather than leaving a batch run waiting. */
+#ifdef PORT
+		port_log("SSB64 Replay: playback ended early ticks=%u of %u result=INCOMPLETE\n",
+		         syNetInputGetPublishedTickCount(), sSYNetReplayLoadedFrameCount);
+#endif
+		sSYNetReplayIsPlaybackVerified = TRUE;
+		sSYNetReplayIsPlaybackActive = FALSE;
+
+#ifdef PORT
+		if (sSYNetReplayRigExit != FALSE)
+		{
+			/* Batch/rig mode: report through the exit code. port_exit_process()
+			 * terminates immediately - normal teardown from the game coroutine
+			 * is not safe (render/audio threads are mid-frame). */
+			/* the input stream could not be verified, but a state trace that
+			 * already diverged is the stronger verdict and must not be masked */
+			s32 exit_code = (syNetSyncGetVerifyResult() == nSYNetSyncVerifyDiverged) ? 4 : 2;
+
+			if (exit_code == 4)
+			{
+				port_log("SSB64 Replay: match ended early and the state trace diverged result=DESYNC\n");
+			}
+			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", exit_code);
+			syNetSyncFinishVSSession();
+			port_exit_process(exit_code);
+		}
+#endif
+	}
 	if ((sSYNetReplayIsRecording != FALSE) && (sSYNetReplayIsRecordWritten == FALSE))
 	{
 		syNetReplayWriteDebugFile(sSYNetReplayRecordPath);
@@ -351,9 +448,13 @@ sb32 syNetReplayLoadDebugFile(const char *path)
 		(header.version != SYNETINPUT_REPLAY_VERSION) ||
 		(header.metadata_size != sizeof(SYNetInputReplayMetadata)) ||
 		(header.frame_size != sizeof(SYNetInputFrame)) ||
-		(header.frame_count > SYNETINPUT_REPLAY_MAX_FRAMES) ||
+		(header.frame_count == 0) || (header.frame_count > SYNETINPUT_REPLAY_MAX_FRAMES) ||
 		(header.player_count != MAXCONTROLLERS))
 	{
+#ifdef PORT
+		port_log("SSB64 Replay: rejected playback header path=%s magic=0x%08X version=%u frames=%u players=%u\n",
+		         path, header.magic, header.version, header.frame_count, header.player_count);
+#endif
 		fclose(fp);
 		return FALSE;
 	}

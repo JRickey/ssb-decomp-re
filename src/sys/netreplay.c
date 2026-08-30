@@ -1,4 +1,5 @@
 #include <sys/netreplay.h>
+#include <sys/netsync.h>
 
 #include <ft/fighter.h>
 #include <if/ifcommon.h>
@@ -212,6 +213,7 @@ void syNetReplayInitDebugEnv(void)
 			if (sSYNetReplayRigExit != FALSE)
 			{
 				port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", 3);
+				syNetSyncFinishVSSession();
 				port_exit_process(3);
 			}
 		}
@@ -299,9 +301,35 @@ void syNetReplayUpdate(void)
 		{
 			/* Batch/rig mode: report through the exit code. port_exit_process()
 			 * terminates immediately - normal teardown from the game coroutine
-			 * is not safe (render/audio threads are mid-frame). */
-			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", (is_pass != FALSE) ? 0 : 1);
-			port_exit_process((is_pass != FALSE) ? 0 : 1);
+			 * is not safe (render/audio threads are mid-frame). Inputs that
+			 * replayed identically but a gameplay state trace that diverged
+			 * (SSB64_SYNC_VERIFY) is its own code: the sim is nondeterministic. */
+			s32 exit_code = (is_pass != FALSE) ? 0 : 1;
+
+			if (is_pass != FALSE)
+			{
+				switch (syNetSyncGetVerifyResult())
+				{
+				case nSYNetSyncVerifyNotLoaded:
+					/* an absent oracle must never read as PASS */
+					port_log("SSB64 Replay: inputs PASS but the state trace to verify against did not load result=LOADFAIL\n");
+					exit_code = 3;
+					break;
+				case nSYNetSyncVerifyDiverged:
+					port_log("SSB64 Replay: inputs PASS but state trace diverged result=DESYNC\n");
+					exit_code = 4;
+					break;
+				case nSYNetSyncVerifyShort:
+					port_log("SSB64 Replay: inputs PASS but the state trace ended before the replay did result=DESYNC\n");
+					exit_code = 4;
+					break;
+				default:
+					break;
+				}
+			}
+			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", exit_code);
+			syNetSyncFinishVSSession();
+			port_exit_process(exit_code);
 		}
 #endif
 	}
@@ -327,8 +355,17 @@ void syNetReplayFinishVSSession(void)
 			/* Batch/rig mode: report through the exit code. port_exit_process()
 			 * terminates immediately - normal teardown from the game coroutine
 			 * is not safe (render/audio threads are mid-frame). */
-			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", 2);
-			port_exit_process(2);
+			/* the input stream could not be verified, but a state trace that
+			 * already diverged is the stronger verdict and must not be masked */
+			s32 exit_code = (syNetSyncGetVerifyResult() == nSYNetSyncVerifyDiverged) ? 4 : 2;
+
+			if (exit_code == 4)
+			{
+				port_log("SSB64 Replay: match ended early and the state trace diverged result=DESYNC\n");
+			}
+			port_log("SSB64 Replay: SSB64_RIG_EXIT set, exiting with code %d\n", exit_code);
+			syNetSyncFinishVSSession();
+			port_exit_process(exit_code);
 		}
 #endif
 	}

@@ -388,7 +388,10 @@ _Static_assert(offsetof(ITAttributes, size) == 0x32, "size offset mismatch");
 
 struct ITStruct 						// Common items, stage hazards, fighter items and Pokémon
 {
-	ITStruct *next;    					// Memory region allocated for next ITStruct
+	ITStruct *next;
+#ifdef PORT
+	u32 spawn_serial;					// Per-match creation serial (state trace identity; gobj->id is only the kind)
+#endif    					// Memory region allocated for next ITStruct
 	GObj* item_gobj;		 			// Item's GObj pointer
 	GObj* owner_gobj;		 			// Item's owner
 	s32 kind;			 				// Item ID

@@ -21,6 +21,18 @@ u32 sSYNetInputTick;
 u32 sSYNetInputRecordedFrameCount;
 sb32 sSYNetInputIsRecording;
 sb32 sSYNetInputIsReplayMetadataValid;
+/* Source-independent checksum over every frame published for a tick that
+ * was actually advanced by syNetInputFuncRead(). Accumulated at the same
+ * point sSYNetInputTick is incremented, so a tick re-published while the
+ * P2P start barrier holds is counted once, like the recorder. When a limit
+ * is set the value at exactly that many ticks is frozen for the caller.
+ * sSYNetInputPublishedTickCount counts advances and today moves in lockstep
+ * with sSYNetInputTick; anything that rewinds the tick (a future rollback
+ * via syNetInputSetTick) must save and restore these four values with it. */
+u32 sSYNetInputPublishedChecksum;
+u32 sSYNetInputPublishedTickCount;
+u32 sSYNetInputPublishedChecksumLimit;
+u32 sSYNetInputPublishedChecksumAtLimit;
 
 u32 syNetInputGetTick(void)
 {
@@ -94,6 +106,10 @@ void syNetInputReset(void)
 	sSYNetInputRecordedFrameCount = 0;
 	sSYNetInputIsRecording = FALSE;
 	sSYNetInputIsReplayMetadataValid = FALSE;
+	sSYNetInputPublishedChecksum = 2166136261U;
+	sSYNetInputPublishedTickCount = 0;
+	sSYNetInputPublishedChecksumLimit = 0;
+	sSYNetInputPublishedChecksumAtLimit = 0;
 
 	sSYNetInputReplayMetadata.magic = SYNETINPUT_REPLAY_MAGIC;
 	sSYNetInputReplayMetadata.version = SYNETINPUT_REPLAY_VERSION;
@@ -346,26 +362,6 @@ u32 syNetInputAccumulateInputChecksum(u32 checksum, s32 player, SYNetInputFrame 
 	return checksum;
 }
 
-u32 syNetInputGetHistoryInputChecksum(u32 frame_count)
-{
-	SYNetInputFrame frame;
-	u32 checksum = 2166136261U;
-	u32 tick;
-	s32 player;
-
-	for (tick = 0; tick < frame_count; tick++)
-	{
-		for (player = 0; player < MAXCONTROLLERS; player++)
-		{
-			if (syNetInputGetHistoryFrame(player, tick, &frame) != FALSE)
-			{
-				checksum = syNetInputAccumulateInputChecksum(checksum, player, &frame);
-			}
-		}
-	}
-	return checksum;
-}
-
 u32 syNetInputGetHistoryInputValueChecksumForPlayer(s32 player, u32 tick_begin, u32 frame_count)
 {
 	SYNetInputFrame frame;
@@ -561,5 +557,36 @@ void syNetInputFuncRead(void)
 	{
 		return;
 	}
+	for (player = 0; player < MAXCONTROLLERS; player++)
+	{
+		sSYNetInputPublishedChecksum = syNetInputAccumulateInputChecksum(
+			sSYNetInputPublishedChecksum, player, &sSYNetInputSlots[player].last_published);
+	}
+	sSYNetInputPublishedTickCount++;
+
+	if ((sSYNetInputPublishedChecksumLimit != 0) && (sSYNetInputPublishedTickCount == sSYNetInputPublishedChecksumLimit))
+	{
+		sSYNetInputPublishedChecksumAtLimit = sSYNetInputPublishedChecksum;
+	}
 	sSYNetInputTick++;
+}
+
+void syNetInputSetPublishedChecksumLimit(u32 tick_limit)
+{
+	sSYNetInputPublishedChecksumLimit = tick_limit;
+	sSYNetInputPublishedChecksumAtLimit = sSYNetInputPublishedChecksum;
+}
+
+u32 syNetInputGetPublishedTickCount(void)
+{
+	return sSYNetInputPublishedTickCount;
+}
+
+u32 syNetInputGetPublishedInputChecksum(void)
+{
+	if ((sSYNetInputPublishedChecksumLimit != 0) && (sSYNetInputPublishedTickCount >= sSYNetInputPublishedChecksumLimit))
+	{
+		return sSYNetInputPublishedChecksumAtLimit;
+	}
+	return sSYNetInputPublishedChecksum;
 }

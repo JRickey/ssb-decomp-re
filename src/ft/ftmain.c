@@ -541,7 +541,28 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         ms->script_id++;
 
 #ifdef PORT
-        ms->p_script = (u32*)PORT_RESOLVE(ftMotionEventCast(ms, FTMotionEventSubroutine2)->p_goto);
+        {
+            u32 sub_token = ftMotionEventCast(ms, FTMotionEventSubroutine2)->p_goto;
+
+            ms->p_script = (u32*)PORT_RESOLVE(sub_token);
+
+            /* A NULL jump target silently kills the whole script at the
+             * event loop's p_script guard — the failure mode behind issue
+             * #240 (stubbed-to-zero demo-script operands; see
+             * scsubsysportfix.c). Log once so the next dead script isn't
+             * invisible. */
+            if (ms->p_script == NULL)
+            {
+                static sb32 logged = FALSE;
+
+                if (!logged)
+                {
+                    logged = TRUE;
+                    port_log("ftMainParseMotionEvent: Subroutine token %08X resolved to "
+                             "NULL — script killed (first occurrence only)\n", sub_token);
+                }
+            }
+        }
 #else
         ms->p_script = ftMotionEventCast(ms, FTMotionEventSubroutine2)->p_goto;
 #endif
@@ -594,7 +615,24 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         ftMotionEventAdvance(ms, FTMotionEventGoto1);
 
 #ifdef PORT
-        ms->p_script = (u32*)PORT_RESOLVE(ftMotionEventCast(ms, FTMotionEventGoto2)->p_goto);
+        {
+            u32 goto_token = ftMotionEventCast(ms, FTMotionEventGoto2)->p_goto;
+
+            ms->p_script = (u32*)PORT_RESOLVE(goto_token);
+
+            /* See the matching Subroutine diagnostic above (issue #240). */
+            if (ms->p_script == NULL)
+            {
+                static sb32 logged = FALSE;
+
+                if (!logged)
+                {
+                    logged = TRUE;
+                    port_log("ftMainParseMotionEvent: Goto token %08X resolved to "
+                             "NULL — script killed (first occurrence only)\n", goto_token);
+                }
+            }
+        }
 #else
         ms->p_script = ftMotionEventCast(ms, FTMotionEventGoto2)->p_goto;
 #endif

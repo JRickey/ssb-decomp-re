@@ -12,10 +12,12 @@ extern void *func_800269C0_275C0(u16 id);
 // Port-built CSS sprites (baked into the binary at compile time). Declared as
 // `extern` rather than a header include because the port symbols live outside
 // the decomp include path; the linker resolves them from port/css_icons/*.cpp.
-// Generic per-stage CSS asset getters — bytes live in <app-data>/assets/css_icons/
-// and are derived from the user's ROM at build time by tools/derive_stage_assets.py
-// (see port/css_icons/port_css_stage_assets.cpp). Return NULL when the requested
-// gkind has no port-side PNG, in which case the caller falls back to ROM data.
+// Generic per-stage CSS asset getters (port/css_icons/port_css_stage_assets.cpp).
+// Backgrounds and icons load a PNG override from <app-data>/assets/css_icons/
+// when present (dev builds stage these at build time via
+// tools/derive_stage_assets.py) and otherwise derive from the wallpaper Sprite
+// in the user's extracted .o2r archive. Nameplates/emblems are PNG-only.
+// Return NULL when nothing is available; the caller falls back to ROM data.
 extern Sprite *portCSSGetStageIconSprite(int gkind);
 extern Sprite *portCSSGetStageBackgroundSprite(int gkind);
 extern Sprite *portCSSGetStageNameSprite(int gkind);
@@ -23,6 +25,10 @@ extern Sprite *portCSSGetStageEmblemSprite(int gkind);
 extern Sprite *portCSSGetScrollArrowSprite(void);
 extern Sprite *portCSSGetScrollArrowLeftSprite(void);
 extern float port_widescreen_clip_x_scale(void);
+// LUS menu toggle (port/enhancements/BonusStages.cpp, issue #267): non-zero
+// when the port-added bonus stage page should be available. Read fresh on
+// each lock check so a menu change applies next time this screen rebuilds.
+extern int port_enhancement_bonus_stages_enabled(void);
 #endif
 
 #define nMNMapsSlotRandom	9
@@ -411,6 +417,18 @@ sb32 mnMapsCheckLocked(s32 gkind)
 		// Empty page slot — no stage to show. Treated as locked so mnMapsMakeIcons
 		// skips it and cursor-movement helpers walk past it.
 		return TRUE;
+	}
+	if (gkind == nGRKindLast || gkind == nGRKindMetal || gkind == nGRKindZako)
+	{
+		// Port-added bonus stages, hideable via the LUS "Bonus Stages" toggle
+		// (issue #267 — vanilla stage roster). Locked here covers everything at
+		// once: no icons, no page-jump landing slot (so the page is unreachable),
+		// no random-selection candidacy, and mnMapsInitVars reroutes a restored
+		// cursor back to page 0.
+		if (!port_enhancement_bonus_stages_enabled())
+		{
+			return TRUE;
+		}
 	}
 #endif
 	if (gkind == nGRKindInishie)
@@ -1443,6 +1461,24 @@ void mnMapsMakeCursor(void)
 }
 
 #ifdef PORT
+// TRUE when the page holds at least one unlocked slot, i.e. a page jump could
+// land there. Keeps the right-arrow indicator honest when the whole bonus page
+// is hidden by the "Bonus Stages" toggle — mnMapsTryPageJump would refuse the
+// jump, so the arrow must not advertise it.
+static sb32 mnMapsPageHasUnlockedSlot(s32 page)
+{
+	s32 slot;
+
+	for (slot = 0; slot < nMNMapsSlotCount; slot++)
+	{
+		if (mnMapsCheckLocked(dMNMapsPageGkinds[page][slot]) == FALSE)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 // Build the page-scroll arrow indicators. One SObj per visible arrow side:
 //   right (>) — present when sMNMapsCursorPage + 1 < nMNMapsPageCount
 //   left  (<) — present when sMNMapsCursorPage > 0; mirrored via sprite.scalex = -1
@@ -1479,7 +1515,8 @@ void mnMapsMakeArrows(void)
 	// 12 px gap to the nearest icon edge.
 	//   Right arrow:  pos.x = 290 → arrow.left=290, icon.right=278, gap=12
 	//   Left  arrow:  pos.x = 10  → arrow.right=18, icon.left=30,   gap=12
-	if (((sMNMapsCursorPage + 1) < nMNMapsPageCount) && (arrow_right != NULL))
+	if (((sMNMapsCursorPage + 1) < nMNMapsPageCount) && (arrow_right != NULL) &&
+	    (mnMapsPageHasUnlockedSlot(sMNMapsCursorPage + 1) != FALSE))
 	{
 		sobj = lbCommonMakeSObjForGObj(gobj, arrow_right);
 		sobj->sprite.attr &= ~SP_FASTCOPY;

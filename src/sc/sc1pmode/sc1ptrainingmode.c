@@ -102,7 +102,14 @@ intptr_t dSC1PTrainingModeWallpaperHeapOffsets[/* */] =
 {
 	0x26C88, 0x26C88, 0x26C88,
 	0x26C88, 0x26C88, 0x26C88,
-	0x26C88, 0x26C88, 0x26C88
+	0x26C88, 0x26C88, 0x26C88,
+	/* Port: the stage select's second page exposes 1P stages (gkind 9-16 —
+	 * Meta Crystal / Duel Zone / Final Destination among them), which
+	 * indexed off the end of this 9-entry table (issue #264). Mirrors the
+	 * 17-entry dMNMapsWallpaperOffsets extension in mnmaps.c. */
+	0x26C88, 0x26C88, 0x26C88,
+	0x26C88, 0x26C88, 0x26C88,
+	0x26C88, 0x26C88
 };
 
 // 0x801907DC
@@ -163,7 +170,18 @@ s32 dSC1PTrainingModeWallpaperIDs[/* */] =
 	1, 	// Yoshi's Story
 	2, 	// Dream Land
 	2, 	// Saffron City
-	2  	// Mushroom Kingdom
+	2, 	// Mushroom Kingdom
+	/* Port: 1P stages reachable from the stage select's second page in
+	 * Training Mode (issue #264). Values mirror the 17-entry
+	 * dMNMapsTrainingModeWallpaperIDs in mnmaps.c. */
+	0,	// Beta Dream Land
+	2,	// Test Stage
+	2,	// How to Play
+	1,	// Small Yoshi's Island (1P Game)
+	2,	// Meta Crystal
+	2,	// Duel Zone
+	2,	// Race to the Finish
+	2	// Final Destination
 };
 
 // 0x8019086C
@@ -729,9 +747,64 @@ void sc1PTrainingModeLoadSprites(void)
 	sSC1PTrainingModeMenu.unk_trainmenu_0x38 = lbRelocGetFileData(SC1PTrainingModeSprites*, file, llSC1PTrainingMode0x1B8PosSpriteArray);
 }
 
+#ifdef PORT
+/* Issue #264: the per-gkind wallpaper tables above are indexed with the
+ * battle gkind directly. The stage select's second page hands Training Mode
+ * gkinds up to nGRKindLast (16); before the tables were extended to 17
+ * entries the three page-2 picks read 4-7 words past the end and fed the
+ * garbage into the 3-entry Descs table (wild file_id / heap offset →
+ * SIGSEGV or heap corruption on stage confirm). Clamp both lookups so any
+ * future gkind added to dMNMapsPageGkinds degrades to the blue training
+ * wallpaper instead of faulting. */
+extern void port_log(const char *fmt, ...);
+
+static s32 sc1PTrainingModeWallpaperID(void)
+{
+	s32 gkind = gSCManagerBattleState->gkind;
+	s32 id;
+
+	if ((gkind < 0) || (gkind >= ARRAY_COUNT(dSC1PTrainingModeWallpaperIDs)))
+	{
+		port_log("sc1PTrainingMode: gkind %d outside wallpaper tables — using training blue\n",
+		         (int)gkind);
+		return 2;
+	}
+	id = dSC1PTrainingModeWallpaperIDs[gkind];
+
+	if ((id < 0) || (id >= ARRAY_COUNT(dSC1PTrainingModeWallpaperDescs)))
+	{
+		return 2;
+	}
+	return id;
+}
+
+static intptr_t sc1PTrainingModeWallpaperHeapOffset(void)
+{
+	s32 gkind = gSCManagerBattleState->gkind;
+
+	if ((gkind < 0) || (gkind >= ARRAY_COUNT(dSC1PTrainingModeWallpaperHeapOffsets)))
+	{
+		return 0x26C88; /* every current entry shares this offset */
+	}
+	return dSC1PTrainingModeWallpaperHeapOffsets[gkind];
+}
+#endif
+
 // 0x8018DDB0
 void sc1PTrainingModeLoadWallpaper(void)
 {
+#ifdef PORT
+	Sprite *sprite = lbRelocGetFileData
+	(
+		Sprite*,
+		lbRelocGetForceExternHeapFile
+		(
+			dSC1PTrainingModeWallpaperDescs[sc1PTrainingModeWallpaperID()].file_id,
+			(void*) ((uintptr_t)PORT_RESOLVE(gMPCollisionGroundData->wallpaper) - (intptr_t)sc1PTrainingModeWallpaperHeapOffset())
+		),
+		dSC1PTrainingModeWallpaperDescs[sc1PTrainingModeWallpaperID()].offset
+	);
+#else
 	Sprite *sprite = lbRelocGetFileData
 	(
 		Sprite*,
@@ -742,6 +815,7 @@ void sc1PTrainingModeLoadWallpaper(void)
 		),
 		dSC1PTrainingModeWallpaperDescs[dSC1PTrainingModeWallpaperIDs[gSCManagerBattleState->gkind]].offset
 	);
+#endif
 #ifdef PORT
 	// MPGroundData::wallpaper is a u32 reloc token on the port (Sprite* on N64).
 	// Storing the raw host pointer would truncate to 32 bits on LP64 and resolve
@@ -757,7 +831,11 @@ void sc1PTrainingModeLoadWallpaper(void)
 // 0x8018DE60
 void sc1PTrainingModeInitDisplayVars(void)
 {
+#ifdef PORT
+	gMPCollisionGroundData->fog_color = dSC1PTrainingModeWallpaperDescs[sc1PTrainingModeWallpaperID()].fog_color;
+#else
 	gMPCollisionGroundData->fog_color = dSC1PTrainingModeWallpaperDescs[dSC1PTrainingModeWallpaperIDs[gSCManagerBattleState->gkind]].fog_color;
+#endif
 	ifCommonPlayerMagnifyMakeInterface();
 	gIFCommonPlayerInterface.is_magnify_display = TRUE;
 }

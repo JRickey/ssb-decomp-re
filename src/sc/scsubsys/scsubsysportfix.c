@@ -25,6 +25,9 @@
 #include <ft/fttypes.h>
 #include <ft/ftdef.h>
 
+/* decomp/include shadows the system stdlib.h; declare getenv directly. */
+extern char *getenv(const char *name);
+
 extern unsigned int portRelocRegisterPointer(void *ptr);
 extern void port_log(const char *fmt, ...);
 
@@ -140,6 +143,15 @@ void scSubsysMotionLinkRelocTargets(void)
 {
 	static sb32 validated = FALSE;
 	s32 i;
+
+	/* Diagnostic kill switch: SSB64_NO_MOTIONFIX=1 leaves the demo-script
+	 * operands stubbed (the pre-fix behavior — scripts die at their first
+	 * Subroutine/Goto). Lets a bisect separate "the scripts now run" from
+	 * everything else without a rebuild. */
+	if (getenv("SSB64_NO_MOTIONFIX") != NULL)
+	{
+		return;
+	}
 
 	for (i = 0; i < ARRAY_COUNT(sSCSubsysMotionLinks); i++)
 	{

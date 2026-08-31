@@ -127,13 +127,26 @@ void syNetReplayApplyBattleMetadata(const SYNetInputReplayMetadata *metadata)
 
 	for (player = 0; player < MAXCONTROLLERS; player++)
 	{
+		u8 handicap = metadata->handicaps[player];
+
+		/* A replay file is untrusted input: the per-player handicap indexes
+		 * dFTCommonDataHandicapTable[handicap - 1] in ftParamGetCommonKnockback,
+		 * so 0 (a zero-filled or corrupt file) reads one row BEFORE the table —
+		 * caught by ASan as a global-buffer-overflow during hit processing. The
+		 * game's own paths keep it in 1..9 (CSS default 9 = neutral); clamp to
+		 * the same domain here. */
+		if ((handicap < 1) || (handicap > 9))
+		{
+			handicap = 9;
+		}
+
 		battle_state->players[player].player = (metadata->is_team_battle != FALSE) ? metadata->teams[player] : player;
 		battle_state->players[player].team = metadata->teams[player];
 		battle_state->players[player].pkind = metadata->player_kinds[player];
 		battle_state->players[player].fkind = metadata->fighter_kinds[player];
 		battle_state->players[player].costume = metadata->costumes[player];
 		battle_state->players[player].shade = metadata->shades[player];
-		battle_state->players[player].handicap = metadata->handicaps[player];
+		battle_state->players[player].handicap = handicap;
 		battle_state->players[player].level = metadata->levels[player];
 		battle_state->players[player].tag = (metadata->player_kinds[player] == nFTPlayerKindMan) ? player : GMCOMMON_PLAYERS_MAX;
 		battle_state->players[player].is_single_stockicon = (metadata->game_rules & SCBATTLE_GAMERULE_TIME) ? TRUE : FALSE;

@@ -26,8 +26,9 @@ extern Sprite *portCSSGetScrollArrowSprite(void);
 extern Sprite *portCSSGetScrollArrowLeftSprite(void);
 extern float port_widescreen_clip_x_scale(void);
 // LUS menu toggle (port/enhancements/BonusStages.cpp, issue #267): non-zero
-// when the port-added bonus stage page should be available. Read fresh on
-// each lock check so a menu change applies next time this screen rebuilds.
+// when the port-added bonus stage page should be available. Read ONLY by the
+// mnMapsInitVars snapshot (sMNMapsBonusStagesEnabled) so the lock state is
+// consistent for the whole screen session; a menu change applies next open.
 extern int port_enhancement_bonus_stages_enabled(void);
 #endif
 
@@ -299,6 +300,17 @@ s32 dMNMapsPageGkinds[nMNMapsPageCount][nMNMapsSlotCount] =
 
 static SObj *sMNMapsStageSelectTextSObj = NULL; // Tracks the cursive image
 static GObj *sMNMapsMusicSelectTextGObj = NULL; // Tracks our new text
+
+// Snapshot of the LUS "Bonus Stages" toggle, latched by mnMapsInitVars each
+// time this screen opens. All in-scene lock checks read the snapshot, never
+// the live CVar — otherwise a mid-screen toggle from the overlay menu
+// half-applies (icons and arrows are built only at open/page-slide, but the
+// lock checks gate cursor movement and stage confirm every frame, so a live
+// read could freeze the cursor on a suddenly-all-locked page or let A select
+// a stage whose icon just vanished). The toggle lands on the next rebuild.
+static sb32 sMNMapsBonusStagesEnabled = TRUE;
+
+s32 mnMapsGetPageForGkind(s32 gkind); // defined below; used by mnMapsCheckLocked
 #endif
 
 // // // // // // // // // // // //
@@ -418,17 +430,17 @@ sb32 mnMapsCheckLocked(s32 gkind)
 		// skips it and cursor-movement helpers walk past it.
 		return TRUE;
 	}
-	if (gkind == nGRKindLast || gkind == nGRKindMetal || gkind == nGRKindZako)
+	if (!sMNMapsBonusStagesEnabled && mnMapsGetPageForGkind(gkind) > nMNMapsPageOriginal)
 	{
 		// Port-added bonus stages, hideable via the LUS "Bonus Stages" toggle
-		// (issue #267 — vanilla stage roster). Locked here covers everything at
-		// once: no icons, no page-jump landing slot (so the page is unreachable),
-		// no random-selection candidacy, and mnMapsInitVars reroutes a restored
-		// cursor back to page 0.
-		if (!port_enhancement_bonus_stages_enabled())
-		{
-			return TRUE;
-		}
+		// (issue #267 — vanilla stage roster). Membership is derived from the
+		// page table — every stage beyond page 0 is a bonus stage — so a stage
+		// added to dMNMapsPageGkinds later automatically honors the toggle.
+		// Locked here covers everything at once: no icons, no page-jump landing
+		// slot (so the page is unreachable), no random-selection candidacy, and
+		// mnMapsInitVars reroutes a restored cursor back to page 0. Reads the
+		// per-screen snapshot, not the live CVar — see sMNMapsBonusStagesEnabled.
+		return TRUE;
 	}
 #endif
 	if (gkind == nGRKindInishie)
@@ -2507,6 +2519,10 @@ void mnMapsInitVars(void)
 	port_enhancement_music_select_reset(); // reset hook for music selection
 	sMNMapsStageSelectTextSObj = NULL; // reset our text tracking pointers
 	sMNMapsMusicSelectTextGObj = NULL;
+	// Latch the Bonus Stages toggle for this screen session — must happen
+	// before any mnMapsCheckLocked call below (cursor restore) and stays
+	// fixed until the screen is rebuilt.
+	sMNMapsBonusStagesEnabled = port_enhancement_bonus_stages_enabled();
 #endif
 
 	sMNMapsNameLogoGObj = NULL;

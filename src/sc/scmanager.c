@@ -984,6 +984,21 @@ void scManagerRunLoop(sb32 arg)
 			portSCManagerConsumeReset();
 		}
 
+		/* Issue #260: never show the N64 boot logo on PC. Every entry
+		 * point into nSCKindStartup (cold boot via the US default scene
+		 * data, and the attract-loop returns from title / auto-demo /
+		 * staff roll / 1P ending / unlock message) is redirected here at
+		 * the single dispatch point to the opening movie — the scene the
+		 * logo itself proceeds to. scene_prev is left as the setter wrote
+		 * it; nothing keys off scene_prev == nSCKindStartup. JP builds
+		 * already boot straight to nSCKindOpeningRoom, and the BGM
+		 * settings-update race that path once exposed is closed by the
+		 * syAudioGetSettingsUpdated() wait above. */
+		if (gSCManagerSceneData.scene_curr == nSCKindStartup)
+		{
+			gSCManagerSceneData.scene_curr = nSCKindOpeningRoom;
+		}
+
 		port_log("SSB64: scManagerRunLoop — entering scene %d\n",
 		         (int)gSCManagerSceneData.scene_curr);
 

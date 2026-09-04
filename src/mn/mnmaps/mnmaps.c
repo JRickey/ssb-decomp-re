@@ -1029,9 +1029,12 @@ static void mnMapsMakeNamePortText(GObj *gobj, const char *str)
 		llMNCommonFontsSymbolPercentSprite,
 		llMNCommonFontsSymbolPeriodSprite,
 	};
-	// Plate runs PlateLeft@174 → PlateRight@262, so center ≈ x=220; baseline y=196 matches
-	// the pre-rendered name sprite Y in mnMapsSetNamePosition.
-	const f32 plate_center_x = 220.0F;
+	// Plate assembly (mnMapsMakeNameBase): PlateLeft cap at x=174 (12 px wide),
+	// middle tiles 186..262, PlateRight cap at x=262 (12 px wide) — so the pill
+	// spans 174..274 and its true center is x=224. (The old 220 assumed the
+	// right CAP POSITION was the right edge, biasing centered text ~4 px left.)
+	// baseline y=196 matches the pre-rendered name sprite Y in mnMapsSetNamePosition.
+	const f32 plate_center_x = 224.0F;
 	const f32 baseline_y     = 196.0F;
 	// Usable plate width with a small margin. Text wider than this at the
 	// preferred scale overflows into the emblem disc on the left (observed:

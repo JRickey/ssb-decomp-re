@@ -1033,10 +1033,15 @@ static void mnMapsMakeNamePortText(GObj *gobj, const char *str)
 	// the pre-rendered name sprite Y in mnMapsSetNamePosition.
 	const f32 plate_center_x = 220.0F;
 	const f32 baseline_y     = 196.0F;
+	// Usable plate width with a small margin. Text wider than this at the
+	// preferred scale overflows into the emblem disc on the left (observed:
+	// "FINAL DESTINATION" rendered as "NAL DESTINATION", the FI hidden
+	// behind the disc), so measure first and shrink-to-fit.
+	const f32 plate_fit_width = 86.0F;
 	// 1.0× = subtitle size (too small for the plate). 1.4× lands close to the visual
-	// height of the pre-rendered name sprites without overflowing the plate horizontally
-	// once centered.
-	const f32 text_scale     = 1.4F;
+	// weight of the pre-rendered name sprites; used whenever the string fits.
+	const f32 preferred_scale = 1.4F;
+	f32 text_scale = preferred_scale;
 	SObj *new_letters[20];
 	s32 new_letters_count = 0;
 	SObj *sobj;
@@ -1044,16 +1049,18 @@ static void mnMapsMakeNamePortText(GObj *gobj, const char *str)
 	f32 shift;
 	s32 i;
 
+	// Pass 1: create the letter SObjs left-to-right at UNSCALED advances,
+	// accumulating the raw string width. Glyph widths must be read from the
+	// SObj copy (post-fixup native layout), so measuring and creation share
+	// this loop; scale and final positions are applied afterwards.
 	for (i = 0; str[i] != 0; i++)
 	{
 		if (str[i] == ' ')
 		{
-			cursor_x += 4.0F * text_scale;
+			cursor_x += 4.0F;
 			continue;
 		}
 		sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNMapsFiles[3], chars[mnMapsGetCharacterID(str[i])]));
-		sobj->sprite.scalex = text_scale;
-		sobj->sprite.scaley = text_scale;
 		sobj->pos.x = cursor_x;
 		sobj->pos.y = baseline_y;
 
@@ -1066,14 +1073,26 @@ static void mnMapsMakeNamePortText(GObj *gobj, const char *str)
 
 		new_letters[new_letters_count++] = sobj;
 
-		cursor_x += (sobj->sprite.width + mnMapsGetCharacterSpacing(str, i)) * text_scale;
+		cursor_x += sobj->sprite.width + mnMapsGetCharacterSpacing(str, i);
 	}
 
-	// cursor_x is now the total rendered width; shift each letter to center on the plate.
-	shift = plate_center_x - (cursor_x * 0.5F);
+	// cursor_x is now the raw (unscaled) string width. Clamp the scale so the
+	// rendered string fits the plate, then scale each letter's advance and
+	// shift the whole run so it is centered on the plate.
+	if (cursor_x > 0.0F && cursor_x * text_scale > plate_fit_width)
+	{
+		text_scale = plate_fit_width / cursor_x;
+	}
+	shift = plate_center_x - (cursor_x * text_scale * 0.5F);
 	for (i = 0; i < new_letters_count; i++)
 	{
-		new_letters[i]->pos.x += shift;
+		new_letters[i]->sprite.scalex = text_scale;
+		new_letters[i]->sprite.scaley = text_scale;
+		new_letters[i]->pos.x = new_letters[i]->pos.x * text_scale + shift;
+		// Glyphs anchor at their top edge; keep the vertical midline where the
+		// preferred-scale text sat so shrunk strings stay centered in the plate.
+		new_letters[i]->pos.y = baseline_y +
+			new_letters[i]->sprite.height * (preferred_scale - text_scale) * 0.5F;
 	}
 }
 #endif

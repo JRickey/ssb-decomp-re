@@ -1032,16 +1032,17 @@ void mnMapsMakeName(GObj *gobj, s32 gkind)
 	// as ROM nameplates: red/green/blue forced to 0x00 so the texel's alpha
 	// mask becomes a black silhouette. mnMapsSetNamePosition isn't safe for
 	// out-of-range gkinds (positions[] is only 9 entries), so position
-	// directly. Unlike the ROM plates (ink left-padded in canvas, drawn at
-	// x=183), the synthesized plates center their ink in the 96px canvas —
-	// anchor at pill-center − 48 = 176 (pill spans 174..274, center 224) so
-	// a full-width string ("FINAL DESTINATION") sits 2px inside each cap.
+	// directly at the ROM's canonical nameplate anchor x=183: the PlateRight
+	// cap sprite is 24 px wide (o2r-verified), so the pill spans 174..286
+	// with center 230, and a 96px canvas at 183 centers its ink at 231 —
+	// exactly where the ROM's own pre-rendered plates sit. (An earlier fix
+	// assumed a 12px right cap and anchored at 176, ~6px left of center.)
 	{
 		Sprite *port_name = portCSSGetStageNameSprite(gkind);
 		if (port_name != NULL)
 		{
 			sobj = lbCommonMakeSObjForGObj(gobj, port_name);
-			sobj->pos.x = 176.0F;
+			sobj->pos.x = 183.0F;
 			sobj->pos.y = 196.0F;
 			sobj->sprite.attr &= ~SP_FASTCOPY;
 			sobj->sprite.attr |= SP_TRANSPARENT;

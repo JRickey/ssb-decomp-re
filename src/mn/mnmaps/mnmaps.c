@@ -996,109 +996,6 @@ void mnMapsSetNamePosition(SObj *sobj, s32 gkind)
 #endif
 }
 
-#ifdef PORT
-// Render arbitrary text on the stage-name plate using the subtitle font, scaled up
-// to approximate the visual weight of the pre-rendered name sprites used by the
-// ROM-shipping stages. Two-pass: render letters left-to-right tracking total width,
-// then shift every newly-created SObj so the string is mathematically centered on
-// plate_center_x.
-//
-// Used as a fallback when a port-introduced stage's Torch-derived nameplate PNG
-// isn't present at runtime (user hasn't run a ROM-extracting build).
-//
-// We use the subtitle-font letter sprites (llMNCommonFontsLetter*) — the same family
-// mnMapsMakeString uses.
-static void mnMapsMakeNamePortText(GObj *gobj, const char *str)
-{
-	intptr_t chars[/* */] =
-	{
-		llMNCommonFontsLetterASprite, llMNCommonFontsLetterBSprite,
-		llMNCommonFontsLetterCSprite, llMNCommonFontsLetterDSprite,
-		llMNCommonFontsLetterESprite, llMNCommonFontsLetterFSprite,
-		llMNCommonFontsLetterGSprite, llMNCommonFontsLetterHSprite,
-		llMNCommonFontsLetterISprite, llMNCommonFontsLetterJSprite,
-		llMNCommonFontsLetterKSprite, llMNCommonFontsLetterLSprite,
-		llMNCommonFontsLetterMSprite, llMNCommonFontsLetterNSprite,
-		llMNCommonFontsLetterOSprite, llMNCommonFontsLetterPSprite,
-		llMNCommonFontsLetterQSprite, llMNCommonFontsLetterRSprite,
-		llMNCommonFontsLetterSSprite, llMNCommonFontsLetterTSprite,
-		llMNCommonFontsLetterUSprite, llMNCommonFontsLetterVSprite,
-		llMNCommonFontsLetterWSprite, llMNCommonFontsLetterXSprite,
-		llMNCommonFontsLetterYSprite, llMNCommonFontsLetterZSprite,
-		llMNCommonFontsSymbolApostropheSprite,
-		llMNCommonFontsSymbolPercentSprite,
-		llMNCommonFontsSymbolPeriodSprite,
-	};
-	// Plate assembly (mnMapsMakeNameBase): PlateLeft cap at x=174 (12 px wide),
-	// middle tiles 186..262, PlateRight cap at x=262 (12 px wide) — so the pill
-	// spans 174..274 and its true center is x=224. (The old 220 assumed the
-	// right CAP POSITION was the right edge, biasing centered text ~4 px left.)
-	// baseline y=196 matches the pre-rendered name sprite Y in mnMapsSetNamePosition.
-	const f32 plate_center_x = 224.0F;
-	const f32 baseline_y     = 196.0F;
-	// Usable plate width with a small margin. Text wider than this at the
-	// preferred scale overflows into the emblem disc on the left (observed:
-	// "FINAL DESTINATION" rendered as "NAL DESTINATION", the FI hidden
-	// behind the disc), so measure first and shrink-to-fit.
-	const f32 plate_fit_width = 86.0F;
-	// 1.0× = subtitle size (too small for the plate). 1.4× lands close to the visual
-	// weight of the pre-rendered name sprites; used whenever the string fits.
-	const f32 preferred_scale = 1.4F;
-	f32 text_scale = preferred_scale;
-	SObj *new_letters[20];
-	s32 new_letters_count = 0;
-	SObj *sobj;
-	f32 cursor_x = 0.0F;
-	f32 shift;
-	s32 i;
-
-	// Pass 1: create the letter SObjs left-to-right at UNSCALED advances,
-	// accumulating the raw string width. Glyph widths must be read from the
-	// SObj copy (post-fixup native layout), so measuring and creation share
-	// this loop; scale and final positions are applied afterwards.
-	for (i = 0; str[i] != 0; i++)
-	{
-		if (str[i] == ' ')
-		{
-			cursor_x += 4.0F;
-			continue;
-		}
-		sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNMapsFiles[3], chars[mnMapsGetCharacterID(str[i])]));
-		sobj->pos.x = cursor_x;
-		sobj->pos.y = baseline_y;
-
-		sobj->sprite.attr &= ~SP_FASTCOPY;
-		sobj->sprite.attr |= SP_TRANSPARENT;
-
-		sobj->sprite.red   = 0x00;
-		sobj->sprite.green = 0x00;
-		sobj->sprite.blue  = 0x00;
-
-		new_letters[new_letters_count++] = sobj;
-
-		cursor_x += sobj->sprite.width + mnMapsGetCharacterSpacing(str, i);
-	}
-
-	// cursor_x is now the raw (unscaled) string width. Clamp the scale so the
-	// rendered string fits the plate, then scale each letter's advance and
-	// shift the whole run so it is centered on the plate.
-	if (cursor_x > 0.0F && cursor_x * text_scale > plate_fit_width)
-	{
-		text_scale = plate_fit_width / cursor_x;
-	}
-	shift = plate_center_x - (cursor_x * text_scale * 0.5F);
-	for (i = 0; i < new_letters_count; i++)
-	{
-		new_letters[i]->sprite.scalex = text_scale;
-		new_letters[i]->sprite.scaley = text_scale;
-		new_letters[i]->pos.x = new_letters[i]->pos.x * text_scale + shift;
-		// Glyphs anchor at their top edge; keep the vertical midline where the
-		// preferred-scale text sat so shrunk strings stay centered in the plate.
-		new_letters[i]->pos.y = baseline_y +
-			new_letters[i]->sprite.height * (preferred_scale - text_scale) * 0.5F;
-	}
-}
-#endif
 
 // 0x80132738
 void mnMapsMakeName(GObj *gobj, s32 gkind)
@@ -1130,18 +1027,21 @@ void mnMapsMakeName(GObj *gobj, s32 gkind)
 	};
 
 #ifdef PORT
-	// Generic per-stage nameplate sprite (Torch-derived 96x10 IA4-equivalent PNG,
-	// loaded at runtime). Same color-override pattern as ROM nameplates: red/green/
-	// blue forced to 0x00 so the texel's alpha mask becomes a black silhouette.
-	// mnMapsSetNamePosition isn't safe for out-of-range gkinds (positions[] is
-	// only 9 entries), so we set the canonical x=183/y=196 directly for port
-	// stages — that's the US position the ROM uses for every nameplate.
+	// Generic per-stage nameplate sprite (96x10 synthesized plate — PNG
+	// override or the compiled-in baked fallback). Same color-override pattern
+	// as ROM nameplates: red/green/blue forced to 0x00 so the texel's alpha
+	// mask becomes a black silhouette. mnMapsSetNamePosition isn't safe for
+	// out-of-range gkinds (positions[] is only 9 entries), so position
+	// directly. Unlike the ROM plates (ink left-padded in canvas, drawn at
+	// x=183), the synthesized plates center their ink in the 96px canvas —
+	// anchor at pill-center − 48 = 176 (pill spans 174..274, center 224) so
+	// a full-width string ("FINAL DESTINATION") sits 2px inside each cap.
 	{
 		Sprite *port_name = portCSSGetStageNameSprite(gkind);
 		if (port_name != NULL)
 		{
 			sobj = lbCommonMakeSObjForGObj(gobj, port_name);
-			sobj->pos.x = 183.0F;
+			sobj->pos.x = 176.0F;
 			sobj->pos.y = 196.0F;
 			sobj->sprite.attr &= ~SP_FASTCOPY;
 			sobj->sprite.attr |= SP_TRANSPARENT;
@@ -1151,23 +1051,16 @@ void mnMapsMakeName(GObj *gobj, s32 gkind)
 			return;
 		}
 	}
-	// Port-introduced stages that ship no ROM nameplate sprite. Asset PNG is
-	// missing at runtime — fall back to runtime-rasterized subtitle-font glyphs
-	// so the slot still shows readable text. The fallback can be dropped once
-	// the Torch pipeline is mandatory.
-	switch (gkind)
+	// Port-introduced stages always have a nameplate from the port side —
+	// PNG override or the compiled-in baked plate (port_css_stage_assets.cpp)
+	// — so a NULL here for gkind > nGRKindBattleEnd means the port build is
+	// broken, not a runtime condition. Never index offsets[] (9 entries) with
+	// an out-of-range gkind; leave the plate blank instead. (The old
+	// runtime-rasterized subtitle-font fallback was deleted with the baked
+	// plates — it rendered chewed, mis-kerned glyphs at fractional scales.)
+	if (gkind > nGRKindBattleEnd)
 	{
-	case nGRKindLast:
-		mnMapsMakeNamePortText(gobj, "FINAL DESTINATION");
 		return;
-	case nGRKindMetal:
-		mnMapsMakeNamePortText(gobj, "METAL CAVERN");
-		return;
-	case nGRKindZako:
-		mnMapsMakeNamePortText(gobj, "BATTLEFIELD");
-		return;
-	default:
-		break;
 	}
 #endif
 	sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNMapsFiles[2], offsets[gkind]));

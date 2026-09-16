@@ -994,10 +994,12 @@ void scManagerRunLoop(sb32 arg)
 		 * already boot straight to nSCKindOpeningRoom, and the BGM
 		 * settings-update race that path once exposed is closed by the
 		 * syAudioGetSettingsUpdated() wait above. */
+#if defined(REGION_US)
 		if (gSCManagerSceneData.scene_curr == nSCKindStartup)
 		{
 			gSCManagerSceneData.scene_curr = nSCKindOpeningRoom;
 		}
+#endif
 
 		port_log("SSB64: scManagerRunLoop — entering scene %d\n",
 		         (int)gSCManagerSceneData.scene_curr);

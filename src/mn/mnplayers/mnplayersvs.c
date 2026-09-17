@@ -5500,11 +5500,22 @@ void mnPlayersVSFuncStart(void)
 	{
 		syAudioPlayBGM(0, nSYAudioBGMBattleSelect);
 	}
-	if (gSCManagerTransferBattleState.is_team_battle == FALSE)
+	/* Classic Co-op reuses the VS character-select overlay, but it is still
+	 * the single-player flow. Keep the normal 1P announcer prompt instead of
+	 * describing the VS battle type. */
 	{
-		func_800269C0_275C0(nSYAudioVoiceAnnounceFreeForAll);
+		extern int port_classic_coop_context(void);
+
+		if (port_classic_coop_context())
+		{
+			func_800269C0_275C0(nSYAudioVoiceAnnounceSelectPlayer);
+		}
+		else if (gSCManagerTransferBattleState.is_team_battle == FALSE)
+		{
+			func_800269C0_275C0(nSYAudioVoiceAnnounceFreeForAll);
+		}
+		else func_800269C0_275C0(nSYAudioVoiceAnnounceTeamBattle);
 	}
-	else func_800269C0_275C0(nSYAudioVoiceAnnounceTeamBattle);
 }
 
 // 0x8013B980

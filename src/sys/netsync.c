@@ -1539,8 +1539,7 @@ void syNetSyncInitDebugEnv(void)
 	}
 	if ((sSYNetSyncIsTraceEnabled != FALSE) || (sSYNetSyncIsVerifyEnabled != FALSE))
 	{
-		/* Layout probe: these must agree between the two builds being compared.
-		 * (FTCommandVars is suspected to be 20 bytes on MSVC vs 16 on clang.) */
+		/* Layout probe: these must agree between the two builds being compared. */
 		port_log("SSB64 SyncTrace: sizeof FTStruct=%u ITStruct=%u WPStruct=%u MPCollData=%u FTCommandVars=%u "
 		         "FTComputer=%u FTAttackColl=%u SCBattleState=%u GObj=%u DObj=%u\n",
 		         (u32)sizeof(FTStruct), (u32)sizeof(ITStruct), (u32)sizeof(WPStruct), (u32)sizeof(MPCollData),

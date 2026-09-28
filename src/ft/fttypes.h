@@ -1481,7 +1481,9 @@ struct FTStruct
 
     union FTCommandVars
     {
-        // 
+        // Motion scripts write these four command words directly. Code that
+        // assigns meanings to individual bits must decode the N64 bit
+        // positions from these words rather than overlaying host bitfields.
         struct FTCommandFlags
         {
             u32 flag0;
@@ -1491,6 +1493,7 @@ struct FTStruct
 
         } flags;
 
+#ifndef PORT
         struct FTItemThrowFlags
         {
             sb32 is_throw_item;
@@ -1501,6 +1504,7 @@ struct FTStruct
             s32 angle : 12;
 
         } item_throw;
+#endif
 
     } motion_vars;
 
@@ -1760,5 +1764,9 @@ struct FTStruct
 
     s32 display_mode;
 };
+
+#ifdef PORT
+_Static_assert(sizeof(union FTCommandVars) == 16, "FTCommandVars must contain exactly four command words");
+#endif
 
 #endif

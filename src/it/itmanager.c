@@ -1,4 +1,5 @@
 #include <it/item.h>
+#include <sys/netsync.h>
 #include <wp/weapon.h>
 #include <ft/fighter.h>
 #include <gr/ground.h>
@@ -254,6 +255,9 @@ GObj* itManagerMakeItem(GObj *parent_gobj, ITDesc *item_desc, Vec3f *pos, Vec3f 
 
         return NULL;
     }
+#ifdef PORT
+    ip->spawn_serial = syNetSyncNextSpawnSerial();
+#endif
     attr = lbRelocGetFileData(ITAttributes*, *item_desc->p_file, item_desc->o_attributes);
 #ifdef PORT
     // Plain s16/u16 half-words live in the eight u32 words spanning 0x14..0x33

@@ -56,18 +56,33 @@ void ftCommonItemThrowProcUpdate(GObj *fighter_gobj)
 
     if (fp->motion_vars.flags.flag2 != 0)
     {
+#ifdef PORT
+        u32 throw_params = fp->motion_vars.flags.flag2;
+
+        fp->status_vars.common.itemthrow.throw_vel = F_PCT_TO_DEC((throw_params >> 12) & 0xFFF);
+        fp->status_vars.common.itemthrow.throw_angle = BITFIELD_SEXT(throw_params & 0xFFF, 12);
+#else
         fp->status_vars.common.itemthrow.throw_vel = F_PCT_TO_DEC(fp->motion_vars.item_throw.vel);
         fp->status_vars.common.itemthrow.throw_angle = fp->motion_vars.item_throw.angle;
+#endif
 
         fp->motion_vars.flags.flag2 = 0;
     }
     if (fp->motion_vars.flags.flag1 != 0)
     {
+#ifdef PORT
+        fp->status_vars.common.itemthrow.throw_damage = F_PCT_TO_DEC(fp->motion_vars.flags.flag1 & 0xFFFFFF);
+#else
         fp->status_vars.common.itemthrow.throw_damage = F_PCT_TO_DEC(fp->motion_vars.item_throw.damage);
+#endif
 
         fp->motion_vars.flags.flag1 = 0;
     }
+#ifdef PORT
+    if ((fp->item_gobj != NULL) && (fp->motion_vars.flags.flag0 != FALSE))
+#else
     if ((fp->item_gobj != NULL) && (fp->motion_vars.item_throw.is_throw_item != FALSE))
+#endif
     {
         if 
         (
